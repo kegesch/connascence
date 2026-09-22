@@ -29,6 +29,7 @@ export function buildSymbolTable(filePathOrGlobs: string[]): SymbolTable {
   const defIdToSymbol = new Map<string, TsSymbol>();
   const symbolToDefId = new Map<TsSymbol, string>();
   const defIdByTsNode = new Map<Node, string>();
+  const callIdByTsNode = new Map<Node, string>();
   const handledIdentifiers = new Set<Node>();
 
   for (const file of project.getSourceFiles()) {
@@ -54,6 +55,7 @@ export function buildSymbolTable(filePathOrGlobs: string[]): SymbolTable {
           }
         }
         nodes.push(callNode);
+        callIdByTsNode.set(node, callNode.id);
         node.getArguments().forEach((arg, index) => {
           nodes.push({
             id: nextId('arg'),
@@ -102,6 +104,26 @@ export function buildSymbolTable(filePathOrGlobs: string[]): SymbolTable {
         if (symbol) {
           defIdToSymbol.set(defNode.id, symbol);
           symbolToDefId.set(symbol, defNode.id);
+        }
+        return;
+      }
+
+      // Literal call arguments: seed of the Meaning (magic literal) detector.
+      if (Node.isStringLiteral(node) || Node.isNumericLiteral(node)) {
+        let ancestor: Node | undefined = node.getParent();
+        while (ancestor && !Node.isCallExpression(ancestor) && !Node.isNewExpression(ancestor)) {
+          ancestor = ancestor.getParent();
+        }
+        const callId = ancestor ? callIdByTsNode.get(ancestor) : undefined;
+        if (callId) {
+          nodes.push({
+            id: nextId('lit'),
+            kind: 'literal',
+            name: node.getText(),
+            scopePath: buildScopeChain(node, file),
+            location: locationOf(node, file),
+            parentId: callId,
+          });
         }
         return;
       }

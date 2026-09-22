@@ -4,6 +4,7 @@ import { detectName } from './detectors/name.js';
 import { detectPosition } from './detectors/position.js';
 import { detectAlgorithm } from './detectors/algorithm.js';
 import { detectType } from './detectors/type.js';
+import { detectMeaning } from './detectors/meaning.js';
 import { scoreProject, ScanReport } from './scoring/score.js';
 
 /**
@@ -20,5 +21,6 @@ export function scan(files: string[]): ScanReport {
   project.edges.push(...detectPosition(project));
   project.edges.push(...detectAlgorithm(project));
   project.edges.push(...detectType(project, adapter));
+  project.edges.push(...detectMeaning(project));
   return scoreProject(project);
 }
