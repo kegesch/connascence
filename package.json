@@ -4,7 +4,9 @@
   "description": "",
   "type": "module",
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "build": "tsc",
+    "cli": "tsc && node dist/core/cli.js"
   },
   "keywords": [],
   "author": "",
