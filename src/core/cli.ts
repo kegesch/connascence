@@ -1,25 +1,52 @@
 #!/usr/bin/env node
+import path from 'node:path';
 import { scan } from './scan.js';
+import { explain } from './explain.js';
 
 function usage(): never {
   console.error('usage: connascence scan <path-glob...> [--min-strength=<1-9>] [--format=json|summary]');
+  console.error('       connascence explain <scan-glob...> -- <file>:<line>');
   process.exit(1);
 }
 
 const args = process.argv.slice(2);
-if (args[0] !== 'scan') usage();
+const command = args[0];
+if (command !== 'scan' && command !== 'explain') usage();
 
 const patterns: string[] = [];
 let minStrength = 0;
 let format = 'summary';
-for (const arg of args.slice(1)) {
-  if (arg.startsWith('--min-strength=')) minStrength = Number(arg.split('=')[1]);
+let fileLine: string | undefined;
+for (let i = 1; i < args.length; i++) {
+  const arg = args[i];
+  if (arg === '--') fileLine = args[i + 1];
+  else if (arg.startsWith('--min-strength=')) minStrength = Number(arg.split('=')[1]);
   else if (arg.startsWith('--format=')) format = arg.split('=')[1];
-  else patterns.push(arg);
+  else if (!fileLine) patterns.push(arg);
 }
 if (patterns.length === 0) usage();
 
 const report = scan(patterns);
+
+if (command === 'explain') {
+  if (!fileLine) usage();
+  const edges = explain(report, path.resolve(fileLine));
+  if (edges.length === 0) {
+    console.log(`no connascence edges touch ${fileLine}`);
+    process.exit(0);
+  }
+  console.log(`edges touching ${fileLine}:`);
+  for (const e of edges) {
+    console.log(
+      `  [${e.connascenceType} strength=${e.strength} locality=${e.locality} degree=${e.degree}]`,
+    );
+    console.log(`    A: ${e.nodeA.filePath}:${e.nodeA.startLine} (${e.nodeA.kind} ${e.nodeA.name})`);
+    console.log(`    B: ${e.nodeB.filePath}:${e.nodeB.startLine} (${e.nodeB.kind} ${e.nodeB.name})`);
+    console.log(`    ${e.evidence}`);
+  }
+  process.exit(0);
+}
+
 const edges = minStrength > 0 ? report.edges.filter((e) => e.strength >= minStrength) : report.edges;
 
 if (format === 'json') {
