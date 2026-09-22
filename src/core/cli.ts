@@ -3,9 +3,10 @@ import path from 'node:path';
 import { writeFileSync } from 'node:fs';
 import { scan } from './scan.js';
 import { explain } from './explain.js';
-import { loadConfig, evaluateConfig } from './config.js';
+import { loadConfig, evaluateConfig, filterHeuristics } from './config.js';
 import { clusterFindings, fileHotspots } from './report/findings.js';
 import { renderHtml } from './report/html.js';
+import { diffScan, HEURISTIC_TYPES } from './diff.js';
 
 function usage(): never {
   console.error('usage: connascence scan <path-glob...> [options]');
@@ -13,17 +14,19 @@ function usage(): never {
   console.error('  --type=<t>             only show this connascence type (comma-separated ok)');
   console.error('  --file=<pattern>       only edges touching files whose path contains this substring');
   console.error('  --min-degree=<n>       only edges with degree >= n');
-  console.error('  --top=<n>              limit listed edges (default 20, 0 = all)');
-  console.error('  --format=json|summary|findings|html');
-  console.error('  --out=<file>           write JSON report to file (UTF-8) instead of stdout');
+  console.error('  --top=<n>              limit listed items (default 20, 0 = all)');
+  console.error('  --format=summary|findings|json|html|agent');
+  console.error('  --out=<file>           write JSON or HTML to file (UTF-8) instead of stdout');
   console.error('  --config=<file>        config file (default .connascence.yml if present)');
   console.error('       connascence explain <scan-glob...> -- <file>:<line>');
+  console.error('       connascence diff <glob...> --repo=<path> --base=<ref> [--head=<ref>]');
+  console.error('  (diff compares coupling between git refs; --head omitted = working tree; --format=agent emits harness-friendly feedback)');
   process.exit(1);
 }
 
 const args = process.argv.slice(2);
 const command = args[0];
-if (command !== 'scan' && command !== 'explain') usage();
+if (command !== 'scan' && command !== 'explain' && command !== 'diff') usage();
 
 const patterns: string[] = [];
 let minStrength = 0;
@@ -35,6 +38,9 @@ let top = 20;
 let minDegree = 0;
 let types: string[] = [];
 let filePattern: string | undefined;
+let repoPath: string | undefined;
+let baseRef: string | undefined;
+let headRef: string | undefined;
 
 let v: string | undefined;
 for (let i = 1; i < args.length; i++) {
@@ -49,14 +55,78 @@ for (let i = 1; i < args.length; i++) {
   else if ((v = opt('min-degree')) !== undefined) minDegree = Number(v);
   else if ((v = opt('type')) !== undefined) types = v.split(',').map((t) => t.trim());
   else if ((v = opt('file')) !== undefined) filePattern = v;
+  else if ((v = opt('repo')) !== undefined) repoPath = v;
+  else if ((v = opt('base')) !== undefined) baseRef = v;
+  else if ((v = opt('head')) !== undefined) headRef = v;
   else if (!fileLine) patterns.push(arg);
 }
 if (patterns.length === 0) usage();
 
 const config = loadConfig(configPath);
+
+// ---- diff command: coupling introduced/removed between git refs ----
+if (command === 'diff') {
+  if (!repoPath || !baseRef) usage();
+  const result = diffScan({ repoPath, base: baseRef, head: headRef, globs: patterns, config });
+  let added = filterHeuristics(result.added, config);
+  if (minStrength > 0) added = added.filter((e) => e.strength >= minStrength);
+  if (types.length > 0) added = added.filter((e) => types.includes(e.connascenceType));
+  if (filePattern) {
+    const p = filePattern.replace(/\\/g, '/').toLowerCase();
+    added = added.filter((e) => e.nodeA.filePath.toLowerCase().includes(p) || e.nodeB.filePath.toLowerCase().includes(p));
+  }
+  const rel = (p: string) => p.replace(/\\/g, '/').replace(/^.*\/(src|lib|app)\//, '$1/');
+
+  if (format === 'json' || outFile) {
+    const payload = JSON.stringify(
+      {
+        addedCount: added.length,
+        removedCount: result.removed.length,
+        summaryBefore: result.baseSummary,
+        summaryAfter: result.headSummary,
+        added,
+        removed: result.removed,
+      },
+      null,
+      2,
+    );
+    if (outFile) {
+      writeFileSync(outFile, payload, 'utf8');
+      console.log(`wrote diff report to ${outFile}`);
+    } else {
+      console.log(payload);
+    }
+  } else if (format === 'agent') {
+    // compact, deterministic, prompt-friendly: what the edit introduced
+    if (added.length === 0) {
+      console.log('OK: no new coupling introduced.');
+    } else {
+      console.log(`WARNING: ${added.length} new coupling instance(s) introduced:`);
+      const listed = top > 0 ? added.slice(0, top) : added;
+      for (const e of listed) {
+        const h = HEURISTIC_TYPES.has(e.connascenceType) ? ' [heuristic - review only]' : '';
+        console.log(
+          `- [${e.connascenceType} strength=${e.strength} locality=${e.locality}]${h} ${rel(e.nodeA.filePath)}:${e.nodeA.startLine} (${e.nodeA.name}) <-> ${rel(e.nodeB.filePath)}:${e.nodeB.startLine} (${e.nodeB.name}): ${e.evidence.slice(0, 180)}`,
+        );
+      }
+      if (top > 0 && added.length > top) console.log(`- ... ${added.length - top} more`);
+    }
+  } else {
+    console.log(`connascence diff ${baseRef}..${headRef}`);
+    console.log(`  summary before: ${JSON.stringify(result.baseSummary)}`);
+    console.log(`  summary after:  ${JSON.stringify(result.headSummary)}`);
+    console.log(`\nadded (${added.length}):`);
+    for (const e of (top > 0 ? added.slice(0, top) : added)) {
+      console.log(`  + [${e.connascenceType} s${e.strength} l${e.locality}] ${rel(e.nodeA.filePath)}:${e.nodeA.startLine} <-> ${rel(e.nodeB.filePath)}:${e.nodeB.startLine} — ${e.evidence.slice(0, 140)}`);
+    }
+    console.log(`\nremoved (${result.removed.length})`);
+  }
+  process.exit(added.length > 0 ? 1 : 0);
+}
+
 const report = scan(patterns, config);
 
-let edges = report.edges;
+let edges = filterHeuristics(report.edges, config);
 if (minStrength > 0) edges = edges.filter((e) => e.strength >= minStrength);
 if (types.length > 0) edges = edges.filter((e) => types.includes(e.connascenceType));
 if (minDegree > 0) edges = edges.filter((e) => e.degree >= minDegree);

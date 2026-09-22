@@ -14,6 +14,8 @@ export interface ConnascenceConfig {
     minStrength: number;
     minLocality: number;
   };
+  /** 'exclude' drops heuristic detectors (meaning/value/identity) from all output. Default 'include'. */
+  heuristicFindings?: 'include' | 'exclude';
 }
 
 export function loadConfig(path = '.connascence.yml'): ConnascenceConfig {
@@ -47,6 +49,13 @@ export function applyIgnores(project: IrProject, ignore: string[] | undefined): 
 export interface Violation {
   kind: 'threshold' | 'gate';
   message: string;
+}
+
+const HEURISTIC_TYPES = new Set(['meaning', 'value', 'identity']);
+
+/** Drop heuristic-detector edges when configured (they are candidates, not certainties). */
+export function filterHeuristics<T extends { connascenceType: string }>(edges: T[], config: ConnascenceConfig): T[] {
+  return config.heuristicFindings === 'exclude' ? edges.filter((e) => !HEURISTIC_TYPES.has(e.connascenceType)) : edges;
 }
 
 /** Evaluate a scored report against the config. Pure function. */

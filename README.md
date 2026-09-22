@@ -17,6 +17,7 @@ npm test               # vitest
 ```
 npm run cli -- scan <path-glob...> [options]
 npm run cli -- explain <path-glob...> -- <file>:<line>
+npm run cli -- diff <path-glob...> --repo=<repo> --base=<gitref> [--head=<gitref>] [options]
 ```
 
 (`npm run cli` rebuilds and runs `dist/core/cli.js`; pass args after `--`.)
@@ -29,6 +30,7 @@ npm run cli -- explain <path-glob...> -- <file>:<line>
 | `--format=findings` | clustered findings (clone groups, meaning clusters, shared mutable vars) + file hotspot table |
 | `--format=json` | full machine-readable JSON on stdout |
 | `--format=html` | self-contained interactive HTML report (summary bars, filterable findings, hotspots) |
+| `--format=agent` | (diff only) compact one-line-per-finding feedback for AI agents / harnesses |
 | `--out=<file>` | write JSON or HTML to file in UTF-8 instead of stdout |
 | `--type=<t,t>` | only these connascence types (`name,type,meaning,position,algorithm,value,identity`) |
 | `--min-strength=<1-9>` | only edges at/above this strength (1 = name … 9 = identity) |
@@ -38,6 +40,18 @@ npm run cli -- explain <path-glob...> -- <file>:<line>
 | `--config=<file>` | config file (default `.connascence.yml` if present) |
 
 Exit code is `1` when the config's thresholds or gate are violated — usable as a CI check.
+
+### `diff` — coupling introduced by a change
+
+Compares the coupling graph between two git refs (both refs are scanned via `git archive` into temp dirs; `--head` omitted = current working tree). Exits `1` if any coupling was added — the post-edit quality gate for agent harnesses:
+
+```bash
+npm run cli -- diff "src/**/*.ts" "src/**/*.tsx" --repo=. --base=HEAD --format=agent
+# WARNING: 2 new coupling instance(s) introduced:
+# - [position strength=4 locality=3] src/foo.ts:1 (0) <-> src/foo.ts:1 (id): argument slot 0 bound positionally...
+```
+
+`--format=agent` emits deterministic, prompt-friendly one-liners (evidence truncated, heuristic types marked `[heuristic - review only]`). Use `--format=json` for the full added/removed edge lists. Non-heuristic findings make the command exit non-zero; pair with `heuristicFindings: exclude` in config to gate only on certain coupling.
 
 ### Examples
 
@@ -85,6 +99,7 @@ ignore:              # file globs excluded from the scan
 gate:                # fail when any edge meets both bounds
   minStrength: 7
   minLocality: 4     # 4 = cross-module
+heuristicFindings: include   # or 'exclude' to drop meaning/value/identity everywhere
 ```
 
 ## Scoring
