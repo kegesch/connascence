@@ -94,6 +94,24 @@ npm run cli -- explain "src/**/*.ts" -- src/foo.ts:42
 
 Heuristic detectors always attach an `evidence` string — treat those findings as candidates to review, not certainties.
 
+## Using it as an agent-harness quality gate
+
+The intended edit→feedback loop after an AI agent (or human) changes files:
+
+```bash
+# 1. feedback for the agent prompt (deterministic, one line per finding)
+connascence diff "src/**/*.ts" "src/**/*.tsx" --repo=. --base=HEAD --format=agent
+# exit 0 -> "OK: no new coupling introduced."  |  exit 1 -> WARNING lines to feed back
+
+# 2. PR annotations via GitHub code scanning (only the coupling the change added)
+connascence diff "src/**/*.ts" --repo=. --base=origin/main --format=sarif --out=diff.sarif
+
+# 3. full-repo visual report for humans
+connascence scan "src/**/*.ts" "src/**/*.tsx" --format=html --out=report.html
+```
+
+Tip: set `heuristicFindings: exclude` in `.connascence.yml` while gating so agents are only blocked on deterministic detectors (name, position, algorithm, type) and not on heuristic candidates (meaning, value, identity).
+
 ## Config (`.connascence.yml`)
 
 See `.connascence.yml.example`. Three sections:
