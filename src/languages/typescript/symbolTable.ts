@@ -1,4 +1,5 @@
 import { Project, SourceFile, Node, Symbol as TsSymbol } from 'ts-morph';
+import { createHash } from 'node:crypto';
 import { IrNode, IrProject, ScopePathSegment, nextId } from '../../core/ir.js';
 
 /**
@@ -74,10 +75,17 @@ export function buildSymbolTable(filePathOrGlobs: string[]): SymbolTable {
           kind: definitionKind(node),
           name: nameNode.getText(),
           scopePath: buildScopeChain(node, file),
-          location: locationOf(nameNode, file),
+          location: locationOf(node, file),
         };
         nodes.push(defNode);
         defIdByTsNode.set(node, defNode.id);
+        // structural clone hash for function-like definitions
+        const fnLike = Node.isFunctionDeclaration(node) || Node.isMethodDeclaration(node)
+          ? node
+          : Node.isVariableDeclaration(node) && node.getInitializer() && Node.isArrowFunction(node.getInitializer()!)
+            ? node.getInitializer()!
+            : undefined;
+        if (fnLike) defNode.structureHash = subtreeHash(fnLike);
         if (Node.isParameterDeclaration(node)) {
           // link the parameter to its enclosing function/method definition
           let ancestor: Node | undefined = node.getParent();
@@ -200,4 +208,25 @@ function buildScopeChain(node: Node, file: SourceFile): ScopePathSegment[] {
   }
   segments.push({ kind: 'module', name: file.getFilePath() });
   return segments;
+}
+
+/**
+ * Structural subtree hash: kind name of each node plus child hashes.
+ * Identifiers and literals are abstracted to their kind only, so two
+ * functions with the same shape (different names/literals) hash equally.
+ */
+function subtreeHash(node: Node): string {
+  const sha = createHash('sha1');
+  digestNode(sha, node);
+  return sha.digest('hex');
+}
+
+function digestNode(sha: import('node:crypto').Hash, node: Node): void {
+  sha.update(node.getKindName());
+  const text = node.getText();
+  // leaf nodes: identifiers/literals contribute only their kind (abstracted)
+  if (node.getChildCount() === 0) return;
+  if (Node.isIdentifier(node) || Node.isStringLiteral(node) || Node.isNumericLiteral(node)) return;
+  void text;
+  node.forEachChild((child) => digestNode(sha, child));
 }

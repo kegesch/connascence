@@ -51,6 +51,12 @@ export interface IrNode {
   location: SourceLocation;
   /** Structural parent (e.g. an argument's call node), if any. Enables pure-syntactic detectors over the IR. */
   parentId?: string;
+  /**
+   * Language-adapter-computed hash of the node's normalized subtree structure
+   * (identifiers/literals abstracted away, whitespace-insensitive). Used by the
+   * Algorithm (clone) detector; core never interprets the hash, only groups equal ones.
+   */
+  structureHash?: string;
 }
 
 export interface IrEdge {

@@ -1,6 +1,7 @@
 import { buildSymbolTable } from '../languages/typescript/symbolTable.js';
 import { detectName } from './detectors/name.js';
 import { detectPosition } from './detectors/position.js';
+import { detectAlgorithm } from './detectors/algorithm.js';
 import { scoreProject, ScanReport } from './scoring/score.js';
 
 /**
@@ -12,5 +13,6 @@ export function scan(files: string[]): ScanReport {
   const project = table.project;
   project.edges = detectName(project, table.refIdToDefId);
   project.edges.push(...detectPosition(project));
+  project.edges.push(...detectAlgorithm(project));
   return scoreProject(project);
 }
