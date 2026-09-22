@@ -30,6 +30,7 @@ npm run cli -- diff <path-glob...> --repo=<repo> --base=<gitref> [--head=<gitref
 | `--format=findings` | clustered findings (clone groups, meaning clusters, shared mutable vars) + file hotspot table |
 | `--format=json` | full machine-readable JSON on stdout |
 | `--format=html` | self-contained interactive HTML report (summary bars, filterable findings, hotspots) |
+| `--format=sarif` | SARIF 2.1.0 (GitHub code scanning / SARIF viewers); level by strength: ≥7 error, ≥4 warning, else note |
 | `--format=agent` | (diff only) compact one-line-per-finding feedback for AI agents / harnesses |
 | `--out=<file>` | write JSON or HTML to file in UTF-8 instead of stdout |
 | `--type=<t,t>` | only these connascence types (`name,type,meaning,position,algorithm,value,identity`) |
@@ -52,6 +53,12 @@ npm run cli -- diff "src/**/*.ts" "src/**/*.tsx" --repo=. --base=HEAD --format=a
 ```
 
 `--format=agent` emits deterministic, prompt-friendly one-liners (evidence truncated, heuristic types marked `[heuristic - review only]`). Use `--format=json` for the full added/removed edge lists. Non-heuristic findings make the command exit non-zero; pair with `heuristicFindings: exclude` in config to gate only on certain coupling.
+
+`diff --format=sarif` emits only the **added** edges in SARIF, so a PR check can upload exactly the coupling a change introduces to GitHub code scanning:
+
+```bash
+connascence diff "src/**/*.ts" --repo=. --base=origin/main --format=sarif --out=sarif.diff
+```
 
 ### Examples
 

@@ -6,6 +6,7 @@ import { explain } from './explain.js';
 import { loadConfig, evaluateConfig, filterHeuristics } from './config.js';
 import { clusterFindings, fileHotspots } from './report/findings.js';
 import { renderHtml } from './report/html.js';
+import { renderSarif } from './report/sarif.js';
 import { diffScan, HEURISTIC_TYPES } from './diff.js';
 
 function usage(): never {
@@ -15,7 +16,7 @@ function usage(): never {
   console.error('  --file=<pattern>       only edges touching files whose path contains this substring');
   console.error('  --min-degree=<n>       only edges with degree >= n');
   console.error('  --top=<n>              limit listed items (default 20, 0 = all)');
-  console.error('  --format=summary|findings|json|html|agent');
+  console.error('  --format=summary|findings|json|html|sarif|agent');
   console.error('  --out=<file>           write JSON or HTML to file (UTF-8) instead of stdout');
   console.error('  --config=<file>        config file (default .connascence.yml if present)');
   console.error('       connascence explain <scan-glob...> -- <file>:<line>');
@@ -78,7 +79,9 @@ if (command === 'diff') {
   const rel = (p: string) => p.replace(/\\/g, '/').replace(/^.*\/(src|lib|app)\//, '$1/');
 
   if (format === 'json' || outFile) {
-    const payload = JSON.stringify(
+    const payload = format === 'sarif'
+      ? renderSarif(added, path.resolve(repoPath))
+      : JSON.stringify(
       {
         addedCount: added.length,
         removedCount: result.removed.length,
@@ -163,6 +166,14 @@ if (format === 'html') {
     console.log(`wrote HTML report to ${outFile}`);
   } else {
     process.stdout.write(html);
+  }
+} else if (format === 'sarif') {
+  const sarif = renderSarif(edges, path.resolve('.'));
+  if (outFile) {
+    writeFileSync(outFile, sarif, 'utf8');
+    console.log(`wrote SARIF report to ${outFile}`);
+  } else {
+    console.log(sarif);
   }
 } else if (outFile) {
   writeFileSync(outFile, JSON.stringify({ summary: report.summary, edges }, null, 2), 'utf8');
