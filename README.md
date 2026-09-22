@@ -26,7 +26,9 @@ npm run cli -- diff <path-glob...> --repo=<repo> --base=<gitref> [--head=<gitref
 
 | Option | Meaning |
 |---|---|
-| `--format=summary` | (default) type totals (heuristics marked) + top edges in two sections: **confirmed** (deterministic detectors) first, then heuristic **candidates** |
+| `--format=summary` | (default) **linter-style report**: one-line counts, findings grouped by severity (HIGH → LOW), clustered (clone groups, positional signatures, mutable vars), top-5 hotspots; heuristics marked `[heuristic]` |
+| `--min-severity=<s>` | hide findings below `low` / `medium` / `high` (default `medium`; `low` shows everything) |
+| `--format=findings` | unclustered-by-severity listing of all findings |
 | `--format=findings` | clustered findings (clone groups, meaning clusters, shared mutable vars) + file hotspot table |
 | `--format=json` | full machine-readable JSON on stdout |
 | `--format=html` | self-contained interactive HTML report (summary bars, filterable findings, hotspots) |

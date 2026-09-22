@@ -1,4 +1,5 @@
 import { ScanReport, ScoredEdge } from '../scoring/score.js';
+import { Severity, severityOf } from './severity.js';
 
 export interface Finding {
   kind: string;
@@ -9,6 +10,8 @@ export interface Finding {
   /** distinct (file:line) members involved */
   members: { filePath: string; startLine: number; name: string }[];
   worst: ScoredEdge;
+  /** importance class of the worst member edge */
+  severity: Severity;
 }
 
 function memberOf(e: ScoredEdge) {
@@ -57,6 +60,26 @@ export function clusterFindings(edges: ScoredEdge[]): Finding[] {
     identityGroups.set(key, group);
   }
 
+  // position: group by callee signature — all parameters of one function share the same
+  // set of call sites, so keying on (callee file + call-site set) yields one finding per callee
+  const positionGroups = new Map<string, ScoredEdge[]>();
+  for (const e of edges) {
+    if (e.connascenceType !== 'position') continue;
+    positionGroupEdges(e, positionGroups);
+  }
+
+  // name: dedupe repeated identical (ref site -> def) pairs
+  const nameGroups = new Map<string, ScoredEdge[]>();
+  for (const e of edges) {
+    if (e.connascenceType !== 'name') continue;
+    const key = `${e.nodeA.filePath}:${e.nodeA.startLine}->${e.nodeB.filePath}:${e.nodeB.startLine}`;
+    const group = nameGroups.get(key) ?? [];
+    if (!group.includes(e)) group.push(e);
+    nameGroups.set(key, group);
+  }
+  // collapse the name groups to one representative edge per key
+  const dedupedNameEdges: ScoredEdge[] = [...nameGroups.values()].map((g) => g[0]);
+
   const consumed = new Set<ScoredEdge>();
   for (const group of identityGroups.values()) {
     for (const e of group) consumed.add(e);
@@ -70,6 +93,7 @@ export function clusterFindings(edges: ScoredEdge[]): Finding[] {
       edgeCount: group.length,
       members,
       worst: group[0],
+      severity: severityOf(group[0]),
     });
   }
   for (const [value, group] of meaningGroups) {
@@ -81,6 +105,7 @@ export function clusterFindings(edges: ScoredEdge[]): Finding[] {
       edgeCount: group.length,
       members,
       worst: group[0],
+      severity: severityOf(group[0]),
     });
   }
   for (const group of cloneGroups.values()) {
@@ -92,10 +117,25 @@ export function clusterFindings(edges: ScoredEdge[]): Finding[] {
       edgeCount: group.length,
       members,
       worst: group[0],
+      severity: severityOf(group[0]),
     });
   }
 
-  for (const e of edges) {
+  for (const group of mergePositionGroups(positionGroups).values()) {
+    for (const e of group) consumed.add(e);
+    const callSites = dedupe(group.map(memberA));
+    const callee = group[0].nodeB.name;
+    findings.push({
+      kind: 'position',
+      summary: `arguments bound positionally into ${callee ? `"${callee}" and siblings of ` : ''}${group[0].nodeB.filePath.split('/').pop()} — ${callSites.length} call site(s), ${group.length} parameter bindings`,
+      edgeCount: group.length,
+      members: [...callSites, ...dedupe(group.map(memberOf))],
+      worst: group[0],
+      severity: severityOf(group[0]),
+    });
+  }
+
+  for (const e of dedupedNameEdges) {
     if (consumed.has(e)) continue;
     findings.push({
       kind: e.connascenceType,
@@ -103,6 +143,7 @@ export function clusterFindings(edges: ScoredEdge[]): Finding[] {
       edgeCount: 1,
       members: [memberA(e), memberOf(e)],
       worst: e,
+      severity: severityOf(e),
     });
   }
 
@@ -119,6 +160,29 @@ export function clusterFindings(edges: ScoredEdge[]): Finding[] {
 
 function memberA(e: ScoredEdge) {
   return { filePath: e.nodeA.filePath, startLine: e.nodeA.startLine, name: e.nodeA.name };
+}
+
+/** two passes: first bucket per param edge by callee file + its own call site, then merge buckets
+ *  whose call-site sets are identical (=> same callee signature). */
+function positionGroupEdges(e: ScoredEdge, groups: Map<string, ScoredEdge[]>): void {
+  const key = `${e.nodeB.filePath}|${e.nodeA.filePath}:${e.nodeA.startLine}`;
+  const group = groups.get(key) ?? [];
+  group.push(e);
+  groups.set(key, group);
+}
+
+function mergePositionGroups(groups: Map<string, ScoredEdge[]>): Map<string, ScoredEdge[]> {
+  const merged = new Map<string, ScoredEdge[]>();
+  for (const group of groups.values()) {
+    const calleeFile = group[0].nodeB.filePath;
+    // parameters of one signature are the same def sites for every call site
+    const params = [...new Set(group.map((e) => `${e.nodeB.filePath}:${e.nodeB.startLine}`))].sort().join(';');
+    const key = `${calleeFile}|${params}`;
+    const existing = merged.get(key) ?? [];
+    existing.push(...group);
+    merged.set(key, existing);
+  }
+  return merged;
 }
 
 function dedupe(members: Finding['members']): Finding['members'] {

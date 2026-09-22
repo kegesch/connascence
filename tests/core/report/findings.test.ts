@@ -47,12 +47,25 @@ describe('clusterFindings', () => {
     expect(findings[0].members.length).toBe(4); // Avatar + 3 others
   });
 
-  it('keeps non-clusterable types as one finding per edge', () => {
+  it('clusters position edges by callee signature (same params merge across call sites)', () => {
     const findings = clusterFindings([
-      edge({}, {}, { connascenceType: 'position', strength: 4, evidence: 'e1' }),
-      edge({}, {}, { connascenceType: 'position', strength: 4, evidence: 'e2' }),
+      edge({ filePath: 'a.ts', startLine: 1 }, { filePath: 'b.ts', startLine: 10 }, { connascenceType: 'position', strength: 4, evidence: 'slot0' }),
+      edge({ filePath: 'a.ts', startLine: 1 }, { filePath: 'b.ts', startLine: 11 }, { connascenceType: 'position', strength: 4, evidence: 'slot1' }),
+      edge({ filePath: 'c.ts', startLine: 5 }, { filePath: 'b.ts', startLine: 10 }, { connascenceType: 'position', strength: 4, evidence: 'same params, other call site' }),
+      edge({ filePath: 'c.ts', startLine: 5 }, { filePath: 'b.ts', startLine: 11 }, { connascenceType: 'position', strength: 4, evidence: 'same params, other call site slot1' }),
     ]);
-    expect(findings).toHaveLength(2);
+    expect(findings).toHaveLength(1); // both call sites bind the same params (b.ts:10, b.ts:11) -> one callee
+    expect(findings[0].kind).toBe('position');
+    expect(findings[0].edgeCount).toBe(4);
+    expect(findings[0].members.length).toBe(4); // 2 call sites + 2 params
+  });
+
+  it('dedupes repeated identical name edges', () => {
+    const findings = clusterFindings([
+      edge({ filePath: 'a.ts', startLine: 1 }, { filePath: 'b.ts', startLine: 2 }, { connascenceType: 'name', strength: 1, evidence: 'r1' }),
+      edge({ filePath: 'a.ts', startLine: 1 }, { filePath: 'b.ts', startLine: 2 }, { connascenceType: 'name', strength: 1, evidence: 'r1' }),
+    ]);
+    expect(findings).toHaveLength(1);
   });
 });
 

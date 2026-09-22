@@ -43,6 +43,7 @@ let filePattern: string | undefined;
 let repoPath: string | undefined;
 let baseRef: string | undefined;
 let headRef: string | undefined;
+let minSeverity: 'low' | 'medium' | 'high' = 'medium';
 
 let v: string | undefined;
 for (let i = 1; i < args.length; i++) {
@@ -60,6 +61,7 @@ for (let i = 1; i < args.length; i++) {
   else if ((v = opt('repo')) !== undefined) repoPath = v;
   else if ((v = opt('base')) !== undefined) baseRef = v;
   else if ((v = opt('head')) !== undefined) headRef = v;
+  else if ((v = opt('min-severity')) !== undefined) minSeverity = v as 'low' | 'medium' | 'high';
   else if (!fileLine) patterns.push(arg);
 }
 if (patterns.length === 0) usage();
@@ -156,6 +158,50 @@ if (command === 'explain') {
       console.log(`    B: ${rel(e.nodeB.filePath)}:${e.nodeB.startLine} (${e.nodeB.kind} ${e.nodeB.name})`);
       console.log(`    ${e.evidence}`);
     }
+  }
+  process.exit(0);
+}
+
+if (format === 'summary') {
+  // default linter-style report: clustered, severity-ranked, human/agent readable
+  const findings = clusterFindings(edges);
+  const SEV_ORDER = { high: 2, medium: 1, low: 0 };
+  const cutoff = SEV_ORDER[minSeverity];
+  const shown = findings.filter((f) => SEV_ORDER[f.severity] >= cutoff);
+  const counts = { high: 0, medium: 0, low: 0 };
+  for (const f of findings) counts[f.severity]++;
+  const hiddenLow = findings.length - shown.length;
+
+  console.log(
+    `connascence: ${report.summary && Object.values(report.summary).reduce((a, b) => a + b, 0)} coupling edges -> ${findings.length} findings (${counts.high} high, ${counts.medium} medium, ${counts.low} low)`,
+  );
+  for (const [type, count] of Object.entries(report.summary)) {
+    if (count > 0) console.log(`  ${type}${HEURISTIC_TYPES.has(type) ? ' (heuristic)' : ''}: ${count}`);
+  }
+  if (shown.length === 0) {
+    console.log(`\nOK: no findings at severity >= ${minSeverity}.`);
+    process.exit(0);
+  }
+  for (const sev of ['high', 'medium', 'low'] as const) {
+    const group = shown.filter((f) => f.severity === sev);
+    if (group.length === 0) continue;
+    console.log(`\n${sev.toUpperCase()} (${group.length})${sev === 'low' ? ' — candidates, review before acting' : ''}`);
+    const listed = top > 0 ? group.slice(0, top) : group;
+    for (const f of listed) {
+      const h = f.worst.heuristic ? ' [heuristic]' : '';
+      console.log(`  [${sev}] ${f.kind}${h} x${f.edgeCount} — ${f.summary.slice(0, 160)}`);
+      for (const m of f.members.slice(0, 5)) {
+        console.log(`        ${rel(m.filePath)}:${m.startLine} (${m.name})`);
+      }
+      if (f.members.length > 5) console.log(`        ... +${f.members.length - 5} more locations`);
+    }
+    if (top > 0 && group.length > top) console.log(`  ... ${group.length - top} more ${sev} findings`);
+  }
+  if (hiddenLow > 0) console.log(`\n${hiddenLow} lower-severity finding(s) hidden — use --min-severity=low to see them`);
+  const hotspots = fileHotspots(edges).slice(0, 5);
+  if (hotspots.length > 0) {
+    console.log('\nhotspots:');
+    for (const h of hotspots) console.log(`  ${rel(h.filePath)}  ${h.edgeCount} edges, max-degree ${h.maxDegree}`);
   }
   process.exit(0);
 }
