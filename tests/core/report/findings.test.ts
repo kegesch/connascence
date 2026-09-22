@@ -11,6 +11,7 @@ function edge(a: Partial<ScoredEdge['nodeA']>, b: Partial<ScoredEdge['nodeB']>, 
     locality: 3,
     degree: 1,
     evidence: 'test',
+    heuristic: false,
     ...over,
   };
 }

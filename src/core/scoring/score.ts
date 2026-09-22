@@ -3,6 +3,9 @@ import { strengthOf } from './strength.js';
 import { localityOf } from './locality.js';
 import { degreeMap, degreeOf } from './degree.js';
 
+/** Detectors that produce candidates rather than certainties. */
+export const HEURISTIC_TYPES = new Set(['meaning', 'value', 'identity']);
+
 export interface ScoredEdge {
   nodeA: EdgeEndpoint;
   nodeB: EdgeEndpoint;
@@ -11,6 +14,8 @@ export interface ScoredEdge {
   locality: number;
   degree: number;
   evidence: string;
+  /** true for heuristic detectors (meaning/value/identity): candidates, not certainties */
+  heuristic: boolean;
 }
 
 export interface EdgeEndpoint {
@@ -52,6 +57,7 @@ export function scoreProject(project: IrProject): ScanReport {
       locality: a && b ? localityOf(a, b) : 99,
       degree: Math.min(degreeOf(degrees, edge.nodeA), degreeOf(degrees, edge.nodeB)),
       evidence: edge.evidence,
+      heuristic: HEURISTIC_TYPES.has(edge.connascenceType),
     };
   });
 

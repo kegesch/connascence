@@ -26,7 +26,7 @@ npm run cli -- diff <path-glob...> --repo=<repo> --base=<gitref> [--head=<gitref
 
 | Option | Meaning |
 |---|---|
-| `--format=summary` | (default) type totals + top edges |
+| `--format=summary` | (default) type totals (heuristics marked) + top edges in two sections: **confirmed** (deterministic detectors) first, then heuristic **candidates** |
 | `--format=findings` | clustered findings (clone groups, meaning clusters, shared mutable vars) + file hotspot table |
 | `--format=json` | full machine-readable JSON on stdout |
 | `--format=html` | self-contained interactive HTML report (summary bars, filterable findings, hotspots) |
@@ -92,7 +92,7 @@ npm run cli -- explain "src/**/*.ts" -- src/foo.ts:42
 | Identity | heuristic | mutable module-level variables accessed cross-scope |
 | Execution / Timing | not yet | lowest priority per spec |
 
-Heuristic detectors always attach an `evidence` string — treat those findings as candidates to review, not certainties.
+Heuristic detectors always attach an `evidence` string — treat those findings as candidates to review, not certainties. The default summary view reflects this: deterministic findings are listed first, heuristic candidates in a separate, clearly-labeled section.
 
 ## Using it as an agent-harness quality gate
 

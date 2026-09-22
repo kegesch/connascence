@@ -107,7 +107,12 @@ export function clusterFindings(edges: ScoredEdge[]): Finding[] {
   }
 
   findings.sort(
-    (a, b) => b.worst.strength - a.worst.strength || b.members.length - a.members.length || b.edgeCount - a.edgeCount,
+    (a, b) =>
+      // certainty first: deterministic detectors before heuristic candidates
+      Number(a.worst.heuristic) - Number(b.worst.heuristic) ||
+      b.worst.strength - a.worst.strength ||
+      b.members.length - a.members.length ||
+      b.edgeCount - a.edgeCount,
   );
   return findings;
 }

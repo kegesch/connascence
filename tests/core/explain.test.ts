@@ -10,6 +10,7 @@ function edge(aFile: string, aLine: number, bFile: string, bLine: number): Score
     strength: 1,
     locality: 3,
     degree: 2,
+    heuristic: false,
     evidence: 'test',
   };
 }

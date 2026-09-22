@@ -12,6 +12,7 @@ const report: ScanReport = {
       strength: 5,
       locality: 4,
       degree: 11,
+      heuristic: false,
       evidence: 'structurally identical function bodies: "Avatar" and "CommandList" <script>alert(1)</script>',
     },
   ],

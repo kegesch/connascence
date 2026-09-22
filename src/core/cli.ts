@@ -5,6 +5,7 @@ import { scan } from './scan.js';
 import { explain } from './explain.js';
 import { loadConfig, evaluateConfig, filterHeuristics } from './config.js';
 import { clusterFindings, fileHotspots } from './report/findings.js';
+import type { ScoredEdge } from './scoring/score.js';
 import { renderHtml } from './report/html.js';
 import { renderSarif } from './report/sarif.js';
 import { diffScan, HEURISTIC_TYPES } from './diff.js';
@@ -198,15 +199,25 @@ if (format === 'html') {
 } else {
   console.log('connascence scan summary');
   for (const [type, count] of Object.entries(report.summary)) {
-    console.log(`  ${type}: ${count}`);
+    console.log(`  ${type}${HEURISTIC_TYPES.has(type) ? ' (heuristic)' : ''}: ${count}`);
   }
-  console.log(`\ntop edges (of ${edges.length}):`);
-  const listed = top > 0 ? edges.slice(0, top) : edges;
-  for (const e of listed) {
-    console.log(
-      `  [${e.connascenceType} s${e.strength} l${e.locality} d${e.degree}] ${rel(e.nodeA.filePath)}:${e.nodeA.startLine} <-> ${rel(e.nodeB.filePath)}:${e.nodeB.startLine} — ${e.evidence}`,
-    );
-  }
+
+  // certainty-adjusted default view: deterministic findings first, heuristic candidates after
+  const confirmed = edges.filter((e) => !e.heuristic);
+  const candidates = edges.filter((e) => e.heuristic);
+
+  const printEdges = (label: string, list: ScoredEdge[]): void => {
+    console.log(`\n${label} (of ${list.length}):`);
+    const listed = top > 0 ? list.slice(0, top) : list;
+    if (listed.length === 0) console.log('  (none)');
+    for (const e of listed) {
+      console.log(
+        `  [${e.connascenceType} s${e.strength} l${e.locality} d${e.degree}] ${rel(e.nodeA.filePath)}:${e.nodeA.startLine} <-> ${rel(e.nodeB.filePath)}:${e.nodeB.startLine} — ${e.evidence}`,
+      );
+    }
+  };
+  printEdges('top confirmed edges', confirmed);
+  printEdges('top candidates (heuristic — review before acting)', candidates);
 }
 
 const violations = evaluateConfig(report, config);
