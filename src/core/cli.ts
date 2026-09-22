@@ -2,9 +2,10 @@
 import path from 'node:path';
 import { scan } from './scan.js';
 import { explain } from './explain.js';
+import { loadConfig, evaluateConfig } from './config.js';
 
 function usage(): never {
-  console.error('usage: connascence scan <path-glob...> [--min-strength=<1-9>] [--format=json|summary]');
+  console.error('usage: connascence scan <path-glob...> [--min-strength=<1-9>] [--format=json|summary] [--config=<file>]');
   console.error('       connascence explain <scan-glob...> -- <file>:<line>');
   process.exit(1);
 }
@@ -17,16 +18,19 @@ const patterns: string[] = [];
 let minStrength = 0;
 let format = 'summary';
 let fileLine: string | undefined;
+let configPath: string | undefined;
 for (let i = 1; i < args.length; i++) {
   const arg = args[i];
   if (arg === '--') fileLine = args[i + 1];
   else if (arg.startsWith('--min-strength=')) minStrength = Number(arg.split('=')[1]);
   else if (arg.startsWith('--format=')) format = arg.split('=')[1];
+  else if (arg.startsWith('--config=')) configPath = arg.split('=').slice(1).join('=');
   else if (!fileLine) patterns.push(arg);
 }
 if (patterns.length === 0) usage();
 
-const report = scan(patterns);
+const config = loadConfig(configPath);
+const report = scan(patterns, config);
 
 if (command === 'explain') {
   if (!fileLine) usage();
@@ -61,5 +65,12 @@ if (format === 'json') {
     console.log(
       `  [${e.connascenceType} s${e.strength} l${e.locality} d${e.degree}] ${e.nodeA.filePath.split(/[\\/]/).pop()}:${e.nodeA.startLine} <-> ${e.nodeB.filePath.split(/[\\/]/).pop()}:${e.nodeB.startLine} — ${e.evidence}`,
     );
+  }
+
+  const violations = evaluateConfig(report, config);
+  if (violations.length > 0) {
+    console.error('\nconfig violations:');
+    for (const v of violations) console.error(`  [${v.kind}] ${v.message}`);
+    process.exit(1);
   }
 }

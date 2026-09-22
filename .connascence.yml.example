@@ -1,0 +1,17 @@
+# Per-type thresholds: fail the scan when total count exceeds the value.
+thresholds:
+  algorithm: 500
+  position: 250
+  # type: 100
+  # meaning: 2000
+
+# File globs excluded from scanning (forward slashes; ** crosses directories).
+ignore:
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/__tests__/**"
+
+# Gate: fail when any edge is at least this strong AND this non-local.
+gate:
+  minStrength: 7   # 7 = timing; 1..9 weakest..strongest (see connascence.io)
+  minLocality: 4   # 4 = cross-module
