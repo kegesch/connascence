@@ -38,6 +38,7 @@ export type IrNodeKind =
   | 'parameter'
   | 'property'
   | 'argument'
+  | 'call'
   | 'reference'
   | 'literal';
 
@@ -48,6 +49,8 @@ export interface IrNode {
   /** Enclosing scope chain, innermost first, e.g. [function foo, class Bar, module src/a.ts]. */
   scopePath: ScopePathSegment[];
   location: SourceLocation;
+  /** Structural parent (e.g. an argument's call node), if any. Enables pure-syntactic detectors over the IR. */
+  parentId?: string;
 }
 
 export interface IrEdge {
