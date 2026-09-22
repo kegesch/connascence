@@ -130,7 +130,7 @@ heuristicFindings: include   # or 'exclude' to drop meaning/value/identity every
 ## Scoring
 
 - **Strength** — static table per connascence.io ranking: name(1) < type(2) < meaning(3) < position(4) < algorithm(5) < execution(6) < timing(7) < value(8) < identity(9)
-- **Locality** — nearest-common-ancestor scope walk: 1 = same function, 2 = same class, 3 = same module, 4+ = cross-module
+- **Locality** — nearest-common-ancestor scope walk: 1 = same function, 2 = same class, 3 = same module (file), 4 = same package (directory), 5 = cross-directory
 - **Degree** — per-node edge count per type (hub detection)
 
 ## Adding a language

@@ -15,7 +15,7 @@ describe('symbolTable', () => {
   it('records function definitions with scope', () => {
     const defs = find((n) => n.kind === 'function' && n.name === 'helper');
     expect(defs).toHaveLength(1);
-    expect(defs[0].scopePath.map((s) => s.kind)).toEqual(['module']);
+    expect(defs[0].scopePath.map((s) => s.kind)).toEqual(['module', 'package']);
   });
 
   it('records nested function definitions with innermost-first scope chain', () => {
@@ -24,6 +24,7 @@ describe('symbolTable', () => {
     expect(defs[0].scopePath.map((s) => [s.kind, s.name])).toEqual([
       ['function', 'outer'],
       ['module', expect.stringContaining('basic.ts')],
+      ['package', expect.anything()],
     ]);
   });
 

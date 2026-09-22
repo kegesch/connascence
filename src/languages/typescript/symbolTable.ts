@@ -237,6 +237,7 @@ function buildScopeChain(node: Node, file: SourceFile): ScopePathSegment[] {
     current = current.getParent();
   }
   segments.push({ kind: 'module', name: file.getFilePath() });
+  segments.push({ kind: 'package', name: file.getDirectoryPath() });
   return segments;
 }
 

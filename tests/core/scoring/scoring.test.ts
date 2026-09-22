@@ -37,6 +37,19 @@ describe('locality', () => {
     expect(localityOf(a, b)).toBe(3);
   });
 
+  it('different modules, same directory (package) = 4', () => {
+    const pkg = { kind: 'package' as const, name: 'src/a' };
+    const a = node([{ kind: 'module', name: 'a.ts' }, pkg]);
+    const b = node([{ kind: 'module', name: 'b.ts' }, pkg]);
+    expect(localityOf(a, b)).toBe(4);
+  });
+
+  it('different packages (directories) = 5', () => {
+    const a = node([{ kind: 'module', name: 'a.ts' }, { kind: 'package', name: 'src/a' }]);
+    const b = node([{ kind: 'module', name: 'b.ts' }, { kind: 'package', name: 'src/b' }]);
+    expect(localityOf(a, b)).toBe(5);
+  });
+
   it('different modules = 4 or more', () => {
     const a = node([modA]);
     const b = node([modB]);

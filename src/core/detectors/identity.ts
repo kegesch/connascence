@@ -14,8 +14,8 @@ export function detectIdentity(project: IrProject): IrProject['edges'] {
     if (edge.connascenceType !== 'name') continue;
     const def = byId.get(edge.nodeB);
     if (!def || def.kind !== 'variable' || !def.mutable) continue;
-    // module-level only: scope chain is just the module segment
-    if (def.scopePath.length !== 1 || def.scopePath[0].kind !== 'module') continue;
+    // module-level only: no enclosing function/class scope (module + package segments are fine)
+    if (def.scopePath.some((s) => s.kind === 'function' || s.kind === 'class')) continue;
     const ref = byId.get(edge.nodeA);
     if (!ref) continue;
     // same innermost module code is still fine to flag if ref is inside a function (cross-scope)
