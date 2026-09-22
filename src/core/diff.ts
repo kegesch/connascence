@@ -71,9 +71,19 @@ export function diffScan(opts: DiffOptions): DiffResult {
   const scanAt = (ref: string): { report: ScanReport; root: string } => {
     const dir = materializeRef(repo, ref);
     const root = dir ?? repo;
-    // user globs are relative to the CLI's CWD; remap them to be relative to the
-    // scan root (repo working tree or extracted archive dir)
-    const globPaths = globs.map((g) => path.posix.join(toPosix(root), toPosix(path.relative(repo, path.resolve(g)))));
+    // globs may be relative to the CLI's CWD (e.g. "../repo/src/**/*.ts") or to the
+    // repo itself ("src/**/*.ts"). Disambiguate using the non-wildcard prefix: if the
+    // CWD-resolved prefix lands inside the repo, treat the glob as CWD-relative.
+    const globPaths = globs.map((g) => {
+      const wildcardIdx = g.search(/[*?]/);
+      const head = wildcardIdx >= 0 ? g.slice(0, wildcardIdx) : g;
+      const cwdResolved = path.resolve(head);
+      const isCwdRelative = cwdResolved.startsWith(repo + path.sep) || cwdResolved === repo;
+      const repoRelative = isCwdRelative
+        ? path.relative(repo, path.resolve(g))
+        : g;
+      return path.posix.join(toPosix(root), toPosix(repoRelative));
+    });
     return { report: scan(globPaths, config), root };
   };
 
