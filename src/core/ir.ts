@@ -57,6 +57,10 @@ export interface IrNode {
    * Algorithm (clone) detector; core never interprets the hash, only groups equal ones.
    */
   structureHash?: string;
+  /** For variable definitions: whether the binding is mutable (let/var). Adapter-computed. */
+  mutable?: boolean;
+  /** For variable definitions: the literal initial value, if any (e.g. "10"). Adapter-computed. */
+  initialValue?: string;
 }
 
 export interface IrEdge {

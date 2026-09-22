@@ -88,6 +88,14 @@ export function buildSymbolTable(filePathOrGlobs: string[]): SymbolTable {
             ? node.getInitializer()!
             : undefined;
         if (fnLike) defNode.structureHash = subtreeHash(fnLike);
+        if (Node.isVariableDeclaration(node)) {
+          const kind = node.getVariableStatement()?.getDeclarationList().getDeclarationKind();
+          defNode.mutable = kind !== 'const';
+          const init = node.getInitializer();
+          if (init && (Node.isStringLiteral(init) || Node.isNumericLiteral(init))) {
+            defNode.initialValue = init.getText();
+          }
+        }
         if (Node.isParameterDeclaration(node)) {
           // link the parameter to its enclosing function/method definition
           let ancestor: Node | undefined = node.getParent();
