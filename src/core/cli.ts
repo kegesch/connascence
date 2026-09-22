@@ -5,6 +5,7 @@ import { scan } from './scan.js';
 import { explain } from './explain.js';
 import { loadConfig, evaluateConfig } from './config.js';
 import { clusterFindings, fileHotspots } from './report/findings.js';
+import { renderHtml } from './report/html.js';
 
 function usage(): never {
   console.error('usage: connascence scan <path-glob...> [options]');
@@ -13,7 +14,7 @@ function usage(): never {
   console.error('  --file=<pattern>       only edges touching files whose path contains this substring');
   console.error('  --min-degree=<n>       only edges with degree >= n');
   console.error('  --top=<n>              limit listed edges (default 20, 0 = all)');
-  console.error('  --format=json|summary|findings');
+  console.error('  --format=json|summary|findings|html');
   console.error('  --out=<file>           write JSON report to file (UTF-8) instead of stdout');
   console.error('  --config=<file>        config file (default .connascence.yml if present)');
   console.error('       connascence explain <scan-glob...> -- <file>:<line>');
@@ -85,7 +86,15 @@ if (command === 'explain') {
   process.exit(0);
 }
 
-if (outFile) {
+if (format === 'html') {
+  const html = renderHtml({ summary: report.summary, edges });
+  if (outFile) {
+    writeFileSync(outFile, html, 'utf8');
+    console.log(`wrote HTML report to ${outFile}`);
+  } else {
+    process.stdout.write(html);
+  }
+} else if (outFile) {
   writeFileSync(outFile, JSON.stringify({ summary: report.summary, edges }, null, 2), 'utf8');
   console.log(`wrote ${edges.length} edges to ${outFile}`);
 } else if (format === 'json') {

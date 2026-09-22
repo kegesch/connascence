@@ -74,6 +74,10 @@ Do not skip ahead to semantic detectors before the syntactic ones are solid; eac
 - Run the CLI against a fixture during development: `npm run cli -- scan tests/fixtures/<name>`
 - Every new detector or IR change needs a corresponding test before it's considered done — do not add detector logic without fixtures.
 
+## README maintenance (required)
+
+`README.md` documents the user-facing surface: CLI flags, output formats, config keys, detector coverage, and scoring. Whenever a change alters any of those (new flag, new format, changed config schema, new/changed detector behavior, new strength/locality semantics), update README.md **in the same commit**. If the change is internal-only (refactors, tests, IR internals), no README change is needed.
+
 ## What "done" looks like for a milestone
 
 A build-order step (above) is complete when:

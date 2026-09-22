@@ -88,7 +88,7 @@ export function clusterFindings(edges: ScoredEdge[]): Finding[] {
     const members = dedupe(group.flatMap((e) => [memberA(e), memberOf(e)]));
     findings.push({
       kind: 'algorithm',
-      summary: `clone group of ${members.length} structurally identical function bodies`,
+      summary: `clone group of ${members.length} structurally identical function bodies — e.g. ${group[0].evidence}`,
       edgeCount: group.length,
       members,
       worst: group[0],
