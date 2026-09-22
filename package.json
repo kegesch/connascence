@@ -1,0 +1,20 @@
+{
+  "name": "connscence",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ts-morph": "^28.0.0",
+    "typescript": "^7.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "vitest": "^5.0.1"
+  }
+}
