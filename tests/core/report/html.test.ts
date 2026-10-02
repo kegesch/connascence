@@ -8,12 +8,12 @@ const report: ScanReport = {
     {
       nodeA: { id: 'a', kind: 'function', name: 'Avatar', filePath: 'src/ui/avatar.tsx', startLine: 6 },
       nodeB: { id: 'b', kind: 'function', name: 'CommandList', filePath: 'src/ui/command.tsx', startLine: 62 },
-      connascenceType: 'algorithm',
-      strength: 5,
+      connascenceType: 'name',
+      strength: 1,
       locality: 4,
       degree: 11,
       heuristic: false,
-      evidence: 'structurally identical function bodies: "Avatar" and "CommandList" <script>alert(1)</script>',
+      evidence: 'reference to "CommandList" <script>alert(1)</script>',
     },
   ],
 };
@@ -42,6 +42,6 @@ describe('renderHtml', () => {
   });
 
   it('strength badges expose data-strength for filtering', () => {
-    expect(html).toContain('data-strength="5"');
+    expect(html).toContain('data-strength="1"');
   });
 });

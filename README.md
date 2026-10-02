@@ -26,10 +26,9 @@ npm run cli -- diff <path-glob...> --repo=<repo> --base=<gitref> [--head=<gitref
 
 | Option | Meaning |
 |---|---|
-| `--format=summary` | (default) **linter-style report**: one-line counts, findings grouped by severity (HIGH → LOW), clustered (clone groups, positional signatures, mutable vars), top-5 hotspots; heuristics marked `[heuristic]` |
+| `--format=summary` | (default) **fix-first linter-style report**: findings grouped by severity (HIGH → LOW), clustered (clone groups, per-callee positional signatures, mutable vars); each finding's summary names the exact function/location to change, followed by a `fix:` line with concrete remediation; findings whose locations are all in test files (`*.test.*` / `*.spec.*` / `__tests__/`) are demoted to `low` since test↔code coupling is expected; raw measurements (strength/locality/degree/counts) are omitted — use `--format=json` for them |
 | `--min-severity=<s>` | hide findings below `low` / `medium` / `high` (default `medium`; `low` shows everything) |
-| `--format=findings` | unclustered-by-severity listing of all findings |
-| `--format=findings` | clustered findings (clone groups, meaning clusters, shared mutable vars) + file hotspot table |
+| `--format=findings` | clustered findings (clone groups, meaning clusters, shared mutable vars) with strength labels + file hotspot table |
 | `--format=json` | full machine-readable JSON on stdout |
 | `--format=html` | self-contained interactive HTML report (summary bars, filterable findings, hotspots) |
 | `--format=sarif` | SARIF 2.1.0 (GitHub code scanning / SARIF viewers); level by strength: ≥7 error, ≥4 warning, else note |
@@ -50,11 +49,12 @@ Compares the coupling graph between two git refs (both refs are scanned via `git
 
 ```bash
 npm run cli -- diff "src/**/*.ts" "src/**/*.tsx" --repo=. --base=HEAD --format=agent
-# WARNING: 2 new coupling instance(s) introduced:
-# - [position strength=4 locality=3] src/foo.ts:1 (0) <-> src/foo.ts:1 (id): argument slot 0 bound positionally...
+# WARNING: 1 new coupling instance(s) introduced:
+# - position: src/foo.ts:1 (0) <-> src/foo.ts:1 (id)
+#   fix: Reduce positional coupling: give the callee named parameters (object destructuring) or reorder/trim parameters...
 ```
 
-`--format=agent` emits deterministic, prompt-friendly one-liners (evidence truncated, heuristic types marked `[heuristic - review only]`). Use `--format=json` for the full added/removed edge lists. Non-heuristic findings make the command exit non-zero; pair with `heuristicFindings: exclude` in config to gate only on certain coupling.
+`--format=agent` emits deterministic, prompt-friendly feedback where each finding is paired with a `fix:` line (static remediation advice per connascence type); strength/locality numbers and raw evidence are omitted to keep the prompt focused on the action. Heuristic types are marked `[candidate - review]`. Use `--format=json` for the full added/removed edge lists with all measurements. Non-heuristic findings make the command exit non-zero; pair with `heuristicFindings: exclude` in config to gate only on certain coupling.
 
 `diff --format=sarif` emits only the **added** edges in SARIF, so a PR check can upload exactly the coupling a change introduces to GitHub code scanning:
 

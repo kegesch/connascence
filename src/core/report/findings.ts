@@ -12,6 +12,8 @@ export interface Finding {
   worst: ScoredEdge;
   /** importance class of the worst member edge */
   severity: Severity;
+  /** concrete remediation composed at cluster time when the structure allows (position, algorithm, identity) */
+  fix?: string;
 }
 
 function memberOf(e: ScoredEdge) {
@@ -93,7 +95,8 @@ export function clusterFindings(edges: ScoredEdge[]): Finding[] {
       edgeCount: group.length,
       members,
       worst: group[0],
-      severity: severityOf(group[0]),
+      severity: downgradeIfTestOnly(members, severityOf(group[0])),
+      fix: `make ${def.name} (${relShort(def.filePath)}:${def.startLine}) the single source of truth — export it (or pass it explicitly) and have the ${useCount} access site(s) below read/write that one instance`,
     });
   }
   for (const [value, group] of meaningGroups) {
@@ -111,27 +114,33 @@ export function clusterFindings(edges: ScoredEdge[]): Finding[] {
   for (const group of cloneGroups.values()) {
     for (const e of group) consumed.add(e);
     const members = dedupe(group.flatMap((e) => [memberA(e), memberOf(e)]));
+    const pair = members.slice(0, 2).map((m) => `${m.name} (${relShort(m.filePath)}:${m.startLine})`).join(' ≡ ');
+    const others = members.length - 2;
     findings.push({
       kind: 'algorithm',
-      summary: `clone group of ${members.length} structurally identical function bodies — e.g. ${group[0].evidence}`,
+      summary: `duplicated function bodies: ${pair}${others > 0 ? ` (+${others} more)` : ''}`,
       edgeCount: group.length,
       members,
       worst: group[0],
-      severity: severityOf(group[0]),
+      severity: downgradeIfTestOnly(members, severityOf(group[0])),
+      fix: `keep one implementation (start with ${members[0].name}, ${relShort(members[0].filePath)}:${members[0].startLine}), export it, and have ${members.slice(1).map((m) => m.name).join(', ')} import it instead of duplicating the body`,
     });
   }
 
   for (const group of mergePositionGroups(positionGroups).values()) {
     for (const e of group) consumed.add(e);
     const callSites = dedupe(group.map(memberA));
-    const callee = group[0].nodeB.name;
+    const callee = group[0].nodeB;
+    const paramNames = dedupe(group.map(memberOf)).map((m) => m.name);
+    const params = paramNames.join(', ');
     findings.push({
       kind: 'position',
-      summary: `arguments bound positionally into ${callee ? `"${callee}" and siblings of ` : ''}${group[0].nodeB.filePath.split('/').pop()} — ${callSites.length} call site(s), ${group.length} parameter bindings`,
+      summary: `${callee.name}() (${relShort(callee.filePath)}:${callee.startLine}) takes ${paramNames.length} positional params (${params}) across ${callSites.length} call site(s)`,
       edgeCount: group.length,
       members: [...callSites, ...dedupe(group.map(memberOf))],
       worst: group[0],
-      severity: severityOf(group[0]),
+      severity: downgradeIfTestOnly(callSites, severityOf(group[0])),
+      fix: `convert ${callee.name} (${relShort(callee.filePath)}:${callee.startLine}) to accept a single options object ({ ${params} }); update the ${callSites.length} call site(s) listed below`,
     });
   }
 
@@ -162,6 +171,19 @@ function memberA(e: ScoredEdge) {
   return { filePath: e.nodeA.filePath, startLine: e.nodeA.startLine, name: e.nodeA.name };
 }
 
+function relShort(p: string): string {
+  return p.replace(/\\/g, '/').split('/').slice(-2).join('/');
+}
+
+const TEST_FILE = /\.test\.[cm]?[jt]sx?$|\.spec\.[cm]?[jt]sx?$|(^|\/)__tests__\//i;
+
+/** findings whose involved locations are all inside test files are demoted to 'low':
+ *  coupling between a test and the code it tests is expected, not a refactor target. */
+function downgradeIfTestOnly(members: Finding['members'], severity: Severity): Severity {
+  if (severity === 'low') return severity;
+  return members.every((m) => TEST_FILE.test(m.filePath.replace(/\\/g, '/'))) ? 'low' : severity;
+}
+
 /** two passes: first bucket per param edge by callee file + its own call site, then merge buckets
  *  whose call-site sets are identical (=> same callee signature). */
 function positionGroupEdges(e: ScoredEdge, groups: Map<string, ScoredEdge[]>): void {
@@ -172,15 +194,34 @@ function positionGroupEdges(e: ScoredEdge, groups: Map<string, ScoredEdge[]>): v
 }
 
 function mergePositionGroups(groups: Map<string, ScoredEdge[]>): Map<string, ScoredEdge[]> {
-  const merged = new Map<string, ScoredEdge[]>();
+  // first bucket per callee file, then merge buckets whose def-site lines are
+  // contiguous — contiguous param lines belong to one callee signature, even when
+  // different call sites bind different numbers of (trailing/optional) params.
+  const byFile = new Map<string, ScoredEdge[][]>();
   for (const group of groups.values()) {
     const calleeFile = group[0].nodeB.filePath;
-    // parameters of one signature are the same def sites for every call site
-    const params = [...new Set(group.map((e) => `${e.nodeB.filePath}:${e.nodeB.startLine}`))].sort().join(';');
-    const key = `${calleeFile}|${params}`;
-    const existing = merged.get(key) ?? [];
-    existing.push(...group);
-    merged.set(key, existing);
+    const buckets = byFile.get(calleeFile) ?? [];
+    buckets.push(group);
+    byFile.set(calleeFile, buckets);
+  }
+  const merged = new Map<string, ScoredEdge[]>();
+  for (const [, buckets] of byFile) {
+    buckets.sort(
+      (a, b) => Math.min(...a.map((e) => e.nodeB.startLine)) - Math.min(...b.map((e) => e.nodeB.startLine)),
+    );
+    let cur: ScoredEdge[] = [];
+    let curMax = -1;
+    for (const bucket of buckets) {
+      const min = Math.min(...bucket.map((e) => e.nodeB.startLine));
+      const max = Math.max(...bucket.map((e) => e.nodeB.startLine));
+      if (cur.length > 0 && min - curMax > 2) {
+        merged.set(cur[0].nodeB.filePath + ':' + cur[0].nodeB.startLine, cur);
+        cur = [];
+      }
+      cur.push(...bucket);
+      curMax = Math.max(curMax, max);
+    }
+    if (cur.length > 0) merged.set(cur[0].nodeB.filePath + ':' + cur[0].nodeB.startLine, cur);
   }
   return merged;
 }
@@ -226,5 +267,5 @@ export function fileHotspots(edges: ScoredEdge[]): FileHotspot[] {
   }
   return [...byFile.entries()]
     .map(([filePath, s]) => ({ filePath, ...s }))
-    .sort((a, b) => b.worstStrength - a.worstStrength || b.edgeCount - a.edgeCount);
+    .sort((a, b) => b.edgeCount - a.edgeCount || b.worstStrength - a.worstStrength);
 }

@@ -5,6 +5,7 @@ import { scan } from './scan.js';
 import { explain } from './explain.js';
 import { loadConfig, evaluateConfig, filterHeuristics } from './config.js';
 import { clusterFindings, fileHotspots } from './report/findings.js';
+import { remediationFor, remediationForType } from './report/remediation.js';
 import type { ScoredEdge } from './scoring/score.js';
 import { renderHtml } from './report/html.js';
 import { renderSarif } from './report/sarif.js';
@@ -110,10 +111,11 @@ if (command === 'diff') {
       console.log(`WARNING: ${added.length} new coupling instance(s) introduced:`);
       const listed = top > 0 ? added.slice(0, top) : added;
       for (const e of listed) {
-        const h = HEURISTIC_TYPES.has(e.connascenceType) ? ' [heuristic - review only]' : '';
+        const h = HEURISTIC_TYPES.has(e.connascenceType) ? ' [candidate - review]' : '';
         console.log(
-          `- [${e.connascenceType} strength=${e.strength} locality=${e.locality}]${h} ${rel(e.nodeA.filePath)}:${e.nodeA.startLine} (${e.nodeA.name}) <-> ${rel(e.nodeB.filePath)}:${e.nodeB.startLine} (${e.nodeB.name}): ${e.evidence.slice(0, 180)}`,
+          `- ${e.connascenceType}${h}: ${rel(e.nodeA.filePath)}:${e.nodeA.startLine} (${e.nodeA.name}) <-> ${rel(e.nodeB.filePath)}:${e.nodeB.startLine} (${e.nodeB.name})`,
         );
+        console.log(`  fix: ${remediationForType(e.connascenceType)}`);
       }
       if (top > 0 && added.length > top) console.log(`- ... ${added.length - top} more`);
     }
@@ -168,18 +170,12 @@ if (format === 'summary') {
   const SEV_ORDER = { high: 2, medium: 1, low: 0 };
   const cutoff = SEV_ORDER[minSeverity];
   const shown = findings.filter((f) => SEV_ORDER[f.severity] >= cutoff);
-  const counts = { high: 0, medium: 0, low: 0 };
-  for (const f of findings) counts[f.severity]++;
   const hiddenLow = findings.length - shown.length;
 
-  console.log(
-    `connascence: ${report.summary && Object.values(report.summary).reduce((a, b) => a + b, 0)} coupling edges -> ${findings.length} findings (${counts.high} high, ${counts.medium} medium, ${counts.low} low)`,
-  );
-  for (const [type, count] of Object.entries(report.summary)) {
-    if (count > 0) console.log(`  ${type}${HEURISTIC_TYPES.has(type) ? ' (heuristic)' : ''}: ${count}`);
-  }
+  // fix-first report: each finding ships with its remediation; raw measurements
+  // (strength/locality/degree/counts) stay out of the default view — --format=json has them
   if (shown.length === 0) {
-    console.log(`\nOK: no findings at severity >= ${minSeverity}.`);
+    console.log(`OK: no coupling findings at severity >= ${minSeverity}.`);
     process.exit(0);
   }
   for (const sev of ['high', 'medium', 'low'] as const) {
@@ -188,20 +184,20 @@ if (format === 'summary') {
     console.log(`\n${sev.toUpperCase()} (${group.length})${sev === 'low' ? ' — candidates, review before acting' : ''}`);
     const listed = top > 0 ? group.slice(0, top) : group;
     for (const f of listed) {
-      const h = f.worst.heuristic ? ' [heuristic]' : '';
-      console.log(`  [${sev}] ${f.kind}${h} x${f.edgeCount} — ${f.summary.slice(0, 160)}`);
+      console.log(`  ${f.kind} x${f.edgeCount} — ${f.summary.slice(0, 240)}`);
+      console.log(`    fix: ${remediationFor(f)}`);
       for (const m of f.members.slice(0, 5)) {
-        console.log(`        ${rel(m.filePath)}:${m.startLine} (${m.name})`);
+        console.log(`      ${rel(m.filePath)}:${m.startLine} (${m.name})`);
       }
-      if (f.members.length > 5) console.log(`        ... +${f.members.length - 5} more locations`);
+      if (f.members.length > 5) console.log(`      ... +${f.members.length - 5} more locations`);
     }
     if (top > 0 && group.length > top) console.log(`  ... ${group.length - top} more ${sev} findings`);
   }
   if (hiddenLow > 0) console.log(`\n${hiddenLow} lower-severity finding(s) hidden — use --min-severity=low to see them`);
   const hotspots = fileHotspots(edges).slice(0, 5);
   if (hotspots.length > 0) {
-    console.log('\nhotspots:');
-    for (const h of hotspots) console.log(`  ${rel(h.filePath)}  ${h.edgeCount} edges, max-degree ${h.maxDegree}`);
+    console.log('\nfix these files first (most coupling):');
+    for (const h of hotspots) console.log(`  ${rel(h.filePath)}  (${h.edgeCount} edges)`);
   }
   process.exit(0);
 }
