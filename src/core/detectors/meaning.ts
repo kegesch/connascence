@@ -7,6 +7,9 @@ export interface MeaningDetectorOptions {
   minFiles?: number;
   /** skip numeric literals (array indices etc. dominate and are rarely meaningful). Default true. */
   skipNumbers?: boolean;
+  /** skip trivial string literals (empty string, single characters like '/' or ':')
+   *  whose repetition is rarely actionable. Default true. */
+  skipTrivial?: boolean;
 }
 
 /**
@@ -23,11 +26,16 @@ export function detectMeaning(
   const minCount = options.minCount ?? 5;
   const minFiles = options.minFiles ?? 2;
   const skipNumbers = options.skipNumbers ?? true;
+  const skipTrivial = options.skipTrivial ?? true;
 
   const byValue = new Map<string, IrNode[]>();
   for (const node of project.nodes) {
     if (node.kind !== 'literal') continue;
-    if (skipNumbers && /^-?\d+(\.\d+)?$/.test(node.name.replace(/^"(.*)"$/, '$1'))) continue;
+    const value = node.name.replace(/^['"](.*)['"]$/, '$1');
+    if (skipNumbers && /^-?\d+(\.\d+)?$/.test(value)) continue;
+    // trivial literals: extracting '' or '/' into a named constant is noise —
+    // there is no meaning to share beyond "a separator / the empty value"
+    if (skipTrivial && value.length < 2) continue;
     const group = byValue.get(node.name) ?? [];
     group.push(node);
     byValue.set(node.name, group);

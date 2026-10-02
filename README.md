@@ -87,7 +87,7 @@ npm run cli -- explain "src/**/*.ts" -- src/foo.ts:42
 |---|---|---|
 | Name | yes | symbol-table reference→definition edges (same-scope refs excluded) |
 | Type | yes | TypeChecker: value flows hard-coupled to a shared non-primitive type |
-| Meaning | heuristic | repeated magic literals as call arguments (numbers skipped) |
+| Meaning | heuristic | repeated magic literals as call arguments (numbers and trivial single-character literals like `''` or `'/'` skipped) |
 | Position | yes | args bound positionally into >3-param signatures |
 | Algorithm | yes | normalized subtree-hash clone detection |
 | Value | heuristic | named constants sharing a literal value across files |
