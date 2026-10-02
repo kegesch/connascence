@@ -3,8 +3,21 @@ import { strengthOf } from './strength.js';
 import { localityOf } from './locality.js';
 import { degreeMap, degreeOf } from './degree.js';
 
+/** All connascence types in canonical (strength) order — single source of truth. */
+export const CONNASCENCE_TYPES = [
+  'name',
+  'type',
+  'meaning',
+  'position',
+  'algorithm',
+  'execution',
+  'timing',
+  'value',
+  'identity',
+] as const;
+
 /** Detectors that produce candidates rather than certainties. */
-export const HEURISTIC_TYPES = new Set(['meaning', 'value', 'identity']);
+export const HEURISTIC_TYPES: ReadonlySet<string> = new Set(['meaning', 'value', 'identity']);
 
 export interface ScoredEdge {
   nodeA: EdgeEndpoint;

@@ -7,7 +7,7 @@ import { ConnascenceConfig } from './config.js';
 import { ScoredEdge, ScanReport } from './scoring/score.js';
 import { toPosix } from './paths.js';
 
-export const HEURISTIC_TYPES = new Set(['meaning', 'value', 'identity']);
+export { HEURISTIC_TYPES } from './scoring/score.js';
 
 export interface DiffOptions {
   /** path to the git repository working tree */

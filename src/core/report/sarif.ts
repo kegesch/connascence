@@ -1,8 +1,6 @@
 import { ScoredEdge } from '../scoring/score.js';
-import { HEURISTIC_TYPES } from '../diff.js';
+import { CONNASCENCE_TYPES, HEURISTIC_TYPES } from '../scoring/score.js';
 import { toPosix } from '../paths.js';
-
-const CONNASCENCE_TYPES = ['name', 'type', 'meaning', 'position', 'algorithm', 'execution', 'timing', 'value', 'identity'] as const;
 
 /** SARIF default level by strength: strong coupling is an error, mid is a warning, weak is a note. */
 function levelFor(strength: number): 'error' | 'warning' | 'note' {

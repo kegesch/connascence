@@ -13,6 +13,8 @@ import { renderHtml } from './report/html.js';
 import { renderSarif } from './report/sarif.js';
 import { diffScan, HEURISTIC_TYPES } from './diff.js';
 
+const OUTPUT_ENCODING: BufferEncoding = 'utf8';
+
 function usage(): never {
   console.error('usage: connascence scan <path-glob...> [options]');
   console.error('  --min-strength=<1-9>   only show edges at/above this strength');
@@ -100,7 +102,7 @@ if (command === 'diff') {
       2,
     );
     if (outFile) {
-      writeFileSync(outFile, payload, 'utf8');
+      writeFileSync(outFile, payload, OUTPUT_ENCODING);
       console.log(`wrote diff report to ${outFile}`);
     } else {
       console.log(payload);
@@ -228,7 +230,7 @@ if (format === 'summary') {
 if (format === 'html') {
   const html = renderHtml({ summary: report.summary, edges });
   if (outFile) {
-    writeFileSync(outFile, html, 'utf8');
+    writeFileSync(outFile, html, OUTPUT_ENCODING);
     console.log(`wrote HTML report to ${outFile}`);
   } else {
     process.stdout.write(html);
@@ -236,13 +238,13 @@ if (format === 'html') {
 } else if (format === 'sarif') {
   const sarif = renderSarif(edges, path.resolve('.'));
   if (outFile) {
-    writeFileSync(outFile, sarif, 'utf8');
+    writeFileSync(outFile, sarif, OUTPUT_ENCODING);
     console.log(`wrote SARIF report to ${outFile}`);
   } else {
     console.log(sarif);
   }
 } else if (outFile) {
-  writeFileSync(outFile, JSON.stringify({ summary: report.summary, edges }, null, 2), 'utf8');
+  writeFileSync(outFile, JSON.stringify({ summary: report.summary, edges }, null, 2), OUTPUT_ENCODING);
   console.log(`wrote ${edges.length} edges to ${outFile}`);
 } else if (format === 'json') {
   console.log(JSON.stringify({ summary: report.summary, edges }, null, 2));

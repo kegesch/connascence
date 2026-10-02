@@ -1,6 +1,6 @@
 import { Project, SourceFile, Node, Symbol as TsSymbol } from 'ts-morph';
-import { createHash } from 'node:crypto';
 import { IrNode, IrProject, ScopePathSegment, nextId } from '../../core/ir.js';
+import { subtreeHash } from './structureHash.js';
 
 /**
  * Walks a TypeScript project and builds a table of definitions and references,
@@ -239,25 +239,4 @@ function buildScopeChain(node: Node, file: SourceFile): ScopePathSegment[] {
   segments.push({ kind: 'module', name: file.getFilePath() });
   segments.push({ kind: 'package', name: file.getDirectoryPath() });
   return segments;
-}
-
-/**
- * Structural subtree hash: kind name of each node plus child hashes.
- * Identifiers and literals are abstracted to their kind only, so two
- * functions with the same shape (different names/literals) hash equally.
- */
-function subtreeHash(node: Node): string {
-  const sha = createHash('sha1');
-  digestNode(sha, node);
-  return sha.digest('hex');
-}
-
-function digestNode(sha: import('node:crypto').Hash, node: Node): void {
-  sha.update(node.getKindName());
-  const text = node.getText();
-  // leaf nodes: identifiers/literals contribute only their kind (abstracted)
-  if (node.getChildCount() === 0) return;
-  if (Node.isIdentifier(node) || Node.isStringLiteral(node) || Node.isNumericLiteral(node)) return;
-  void text;
-  node.forEachChild((child) => digestNode(sha, child));
 }

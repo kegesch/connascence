@@ -17,6 +17,20 @@ function intersect(a: Set<string> | undefined, b: Set<string> | undefined): numb
   return n;
 }
 
+/** minimal union-find over string keys */
+function unionFind(): { find: (x: string) => string; union: (a: string, b: string) => void } {
+  const parent = new Map<string, string>();
+  const find = (x: string): string => {
+    let r = parent.get(x) ?? x;
+    while (r !== (parent.get(r) ?? r)) r = parent.get(r) ?? r;
+    return r;
+  };
+  const union = (a: string, b: string) => {
+    parent.set(find(a), find(b));
+  };
+  return { find, union };
+}
+
 export interface DirCohesion {
   /** directory path (posix, as it appears in file paths) */
   dir: string;
@@ -64,15 +78,7 @@ export function dirCohesion(edges: ScoredEdge[]): DirCohesion[] {
     // directory belong together if they reference each other OR depend on the same
     // external targets / are consumed by the same external files (shared fan-out /
     // fan-in). Files with only accidental adjacency end up in different clusters.
-    const parent = new Map<string, string>();
-    const find = (x: string): string => {
-      let r = parent.get(x) ?? x;
-      while (r !== (parent.get(r) ?? r)) r = parent.get(r) ?? r;
-      return r;
-    };
-    const union = (a: string, b: string) => {
-      parent.set(find(a), find(b));
-    };
+    const { find, union } = unionFind();
 
     let internalEdges = 0;
     const fanIn = new Map<string, number>();
@@ -215,13 +221,7 @@ export function fileSplits(edges: ScoredEdge[]): FileSplit[] {
     const callerToDef = new Map<string, Fn>();
     for (const f of list) callerToDef.set(`${file}::${f.name}`, f);
 
-    const parent = new Map<string, string>();
-    const find = (x: string): string => {
-      let r = parent.get(x) ?? x;
-      while (r !== (parent.get(r) ?? r)) r = parent.get(r) ?? r;
-      return r;
-    };
-    const union = (a: string, b: string) => parent.set(find(a), find(b));
+    const { find, union } = unionFind();
 
     const callees = new Map<string, Set<string>>();
     for (const e of dep) {
