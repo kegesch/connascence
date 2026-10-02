@@ -170,7 +170,10 @@ if (command === 'explain') {
 
 if (format === 'summary') {
   // default linter-style report: clustered, severity-ranked, human/agent readable
-  const findings = clusterFindings(edges);
+  let findings = clusterFindings(edges);
+  // name connascence is import-by-name coupling — permanent, unavoidable, no action
+  // possible. Show it only when explicitly requested; the edges stay in --format=json.
+  if (!types.includes('name')) findings = findings.filter((f) => f.kind !== 'name');
   const SEV_ORDER = { high: 2, medium: 1, low: 0 };
   const cutoff = SEV_ORDER[minSeverity];
   const shown = findings.filter((f) => SEV_ORDER[f.severity] >= cutoff);
