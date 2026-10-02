@@ -6,6 +6,8 @@ import { explain } from './explain.js';
 import { loadConfig, evaluateConfig, filterHeuristics } from './config.js';
 import { clusterFindings, fileHotspots } from './report/findings.js';
 import { remediationFor, remediationForType } from './report/remediation.js';
+import { dirCohesion, cohesionFix } from './report/cohesion.js';
+import { toPosix } from './paths.js';
 import type { ScoredEdge } from './scoring/score.js';
 import { renderHtml } from './report/html.js';
 import { renderSarif } from './report/sarif.js';
@@ -198,6 +200,17 @@ if (format === 'summary') {
   if (hotspots.length > 0) {
     console.log('\nfix these files first (most coupling):');
     for (const h of hotspots) console.log(`  ${rel(h.filePath)}  (${h.edgeCount} edges)`);
+  }
+  const cohesion = dirCohesion(edges).slice(0, 5);
+  if (cohesion.length > 0) {
+    const relDir = (d: string) => toPosix(path.relative('.', d)) || '.';
+    console.log('\nmodule structure (directory cohesion):');
+    for (const c of cohesion) {
+      console.log(`  ${relDir(c.dir)} — ${c.files} files, ${c.internalEdges} internal / ${c.externalEdges} external edges`);
+      for (const fix of cohesionFix(c).map((l) => l.split(c.dir).join(relDir(c.dir)))) {
+        console.log(`    fix: ${fix}`);
+      }
+    }
   }
   process.exit(0);
 }
