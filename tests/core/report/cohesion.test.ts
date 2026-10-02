@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dirCohesion, cohesionFix, DirCohesion } from '../../../src/core/report/cohesion.ts';
+import { dirCohesion, cohesionFix, fileSplits, DirCohesion } from '../../../src/core/report/cohesion.ts';
 import type { ScoredEdge } from '../../../src/core/scoring/score.ts';
 
 function dep(fromFile: string, toFile: string): ScoredEdge {
@@ -53,7 +53,7 @@ describe('dirCohesion', () => {
     expect(mod).toBeDefined();
     expect(mod!.clusters.length).toBe(2);
     const fix = cohesionFix(mod!);
-    expect(fix.some((l) => l.includes('disconnected file groups'))).toBe(true);
+    expect(fix.some((l) => l.includes('independent file groups'))).toBe(true);
     expect(fix.some((l) => l.includes('reach into'))).toBe(true);
   });
 
@@ -84,5 +84,55 @@ describe('cohesionFix', () => {
       clusters: [['mod/a.ts', 'mod/b.ts']],
     };
     expect(cohesionFix(c)).toHaveLength(0);
+  });
+});
+
+describe('fileSplits', () => {
+  // reference edge: nodeA = call site inside function `caller`, nodeB = the callee definition
+  function callEdge(caller: string, callerFile: string, refLine: number, callee: string, calleeFile: string, calleeLine: number, calleeKind = 'function'): ScoredEdge {
+    return {
+      nodeA: { id: `ref-${caller}-${callee}-${refLine}`, kind: 'reference', name: callee, filePath: callerFile, startLine: refLine, ownerName: caller },
+      nodeB: { id: `def-${callee}-${calleeFile}`, kind: calleeKind, name: callee, filePath: calleeFile, startLine: calleeLine },
+      connascenceType: 'name',
+      strength: 1,
+      locality: 2,
+      degree: 1,
+      evidence: 'reference',
+      heuristic: false,
+    };
+  }
+
+  it('suggests splitting a file whose functions form independent call groups', () => {
+    const big = 'src/big.ts';
+    const ext = 'src/ext.ts';
+    const edges = [
+      // group 1: parse <-> format, sharing ext helper
+      callEdge('parse', big, 2, 'format', big, 5),
+      callEdge('format', big, 6, 'parse', big, 1),
+      callEdge('parse', big, 3, 'helper', ext, 1),
+      callEdge('format', big, 7, 'helper', ext, 1),
+      // group 2: send <-> retry, never touching group 1
+      callEdge('send', big, 11, 'retry', big, 15),
+      callEdge('retry', big, 16, 'send', big, 10),
+      callEdge('send', big, 12, 'other', ext, 5),
+      callEdge('retry', big, 17, 'other', ext, 5),
+      // group 3: render <-> log
+      callEdge('render', big, 21, 'log', big, 25),
+      callEdge('log', big, 26, 'render', big, 20),
+    ];
+    const splits = fileSplits(edges);
+    expect(splits).toHaveLength(1);
+    expect(splits[0].file).toBe(big);
+    expect(splits[0].groups.length).toBe(3);
+    expect(splits[0].groups[0].map((f) => f.name).sort()).toEqual(['format', 'parse']);
+  });
+
+  it('ignores files with fewer than six functions or a single call group', () => {
+    const edges = [
+      callEdge('a', 'f.ts', 1, 'b', 'f.ts', 2),
+      callEdge('b', 'f.ts', 3, 'a', 'f.ts', 1),
+      callEdge('a', 'f.ts', 2, 'x', 'g.ts', 1),
+    ];
+    expect(fileSplits(edges)).toHaveLength(0);
   });
 });

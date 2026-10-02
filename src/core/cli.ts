@@ -6,7 +6,7 @@ import { explain } from './explain.js';
 import { loadConfig, evaluateConfig, filterHeuristics } from './config.js';
 import { clusterFindings, fileHotspots } from './report/findings.js';
 import { remediationFor, remediationForType } from './report/remediation.js';
-import { dirCohesion, cohesionFix } from './report/cohesion.js';
+import { dirCohesion, cohesionFix, fileSplits } from './report/cohesion.js';
 import { toPosix } from './paths.js';
 import type { ScoredEdge } from './scoring/score.js';
 import { renderHtml } from './report/html.js';
@@ -202,14 +202,24 @@ if (format === 'summary') {
     for (const h of hotspots) console.log(`  ${rel(h.filePath)}  (${h.edgeCount} edges)`);
   }
   const cohesion = dirCohesion(edges).slice(0, 5);
+  const relDir = (d: string) => toPosix(path.relative('.', d)) || '.';
   if (cohesion.length > 0) {
-    const relDir = (d: string) => toPosix(path.relative('.', d)) || '.';
     console.log('\nmodule structure (directory cohesion):');
     for (const c of cohesion) {
       console.log(`  ${relDir(c.dir)} — ${c.files} files, ${c.internalEdges} internal / ${c.externalEdges} external edges`);
       for (const fix of cohesionFix(c).map((l) => l.split(c.dir).join(relDir(c.dir)))) {
         console.log(`    fix: ${fix}`);
       }
+    }
+  }
+  const splits = fileSplits(edges).slice(0, 3);
+  if (splits.length > 0) {
+    console.log('\nsplit candidates (files with independent function groups):');
+    for (const s of splits) {
+      console.log(`  ${rel(s.file)} — ${s.groups.length} independent function groups:`);
+      console.log(
+        `    fix: split into separate modules: ${s.groups.slice(0, 3).map((g) => `[${g.slice(0, 5).map((f) => `${f.name}:${f.startLine}`).join(', ')}${g.length > 5 ? ', …' : ''}]`).join(' ')}`,
+      );
     }
   }
   process.exit(0);

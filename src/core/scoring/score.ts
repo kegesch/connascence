@@ -24,6 +24,9 @@ export interface EdgeEndpoint {
   name: string;
   filePath: string;
   startLine: number;
+  /** innermost enclosing function scope, if any (from the IR scopePath) — lets
+   *  core-level analyses reconstruct a call graph without language types */
+  ownerName?: string;
 }
 
 export interface ScanReport {
@@ -37,12 +40,14 @@ export function scoreProject(project: IrProject): ScanReport {
 
   function endpoint(id: string): EdgeEndpoint {
     const node = byId.get(id);
+    const owner = node?.scopePath.find((s) => s.kind === 'function');
     return {
       id,
       kind: node?.kind ?? 'unknown',
       name: node?.name ?? id,
       filePath: node?.location.filePath ?? '?',
       startLine: node?.location.startLine ?? 0,
+      ownerName: owner?.name,
     };
   }
 
