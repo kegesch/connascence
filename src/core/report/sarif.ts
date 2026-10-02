@@ -1,5 +1,6 @@
 import { ScoredEdge } from '../scoring/score.js';
 import { HEURISTIC_TYPES } from '../diff.js';
+import { toPosix } from '../paths.js';
 
 const CONNASCENCE_TYPES = ['name', 'type', 'meaning', 'position', 'algorithm', 'execution', 'timing', 'value', 'identity'] as const;
 
@@ -8,10 +9,6 @@ function levelFor(strength: number): 'error' | 'warning' | 'note' {
   if (strength >= 7) return 'error';
   if (strength >= 4) return 'warning';
   return 'note';
-}
-
-function toPosix(p: string): string {
-  return p.replace(/\\/g, '/');
 }
 
 function relUri(repoRoot: string, filePath: string): string {

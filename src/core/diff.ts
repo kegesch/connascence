@@ -5,6 +5,7 @@ import path from 'node:path';
 import { scan } from './scan.js';
 import { ConnascenceConfig } from './config.js';
 import { ScoredEdge, ScanReport } from './scoring/score.js';
+import { toPosix } from './paths.js';
 
 export const HEURISTIC_TYPES = new Set(['meaning', 'value', 'identity']);
 
@@ -37,10 +38,6 @@ function materializeRef(repoPath: string, ref: string): string | null {
   execFileSync('tar', ['-xf', tar, '-C', dir], { stdio: 'pipe' });
   rmSync(tar, { force: true });
   return dir;
-}
-
-function toPosix(p: string): string {
-  return p.replace(/\\/g, '/');
 }
 
 /** Repo-relative, forward-slash path so the same file in two checkouts keys identically. */

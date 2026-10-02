@@ -7,13 +7,13 @@ const report: ScanReport = {
   edges: [
     {
       nodeA: { id: 'a', kind: 'function', name: 'Avatar', filePath: 'src/ui/avatar.tsx', startLine: 6 },
-      nodeB: { id: 'b', kind: 'function', name: 'CommandList', filePath: 'src/ui/command.tsx', startLine: 62 },
+      nodeB: { id: 'b', kind: 'function', name: 'CommandList <script>alert(1)</script>', filePath: 'src/ui/command.tsx', startLine: 62 },
       connascenceType: 'name',
       strength: 1,
       locality: 4,
       degree: 11,
       heuristic: false,
-      evidence: 'reference to "CommandList" <script>alert(1)</script>',
+      evidence: 'reference to "CommandList <script>alert(1)</script>"',
     },
   ],
 };

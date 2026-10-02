@@ -1,4 +1,5 @@
 import { Finding } from './findings.js';
+import { shortPath } from '../paths.js';
 
 /**
  * Static, per-connascence-type remediation advice. The report leads with this
@@ -6,7 +7,7 @@ import { Finding } from './findings.js';
  * interpret strength/locality/degree measurements first.
  */
 const REMEDIATION: Record<string, string> = {
-  name: 'Rename so both sides use the same name — rename one definition and update all call sites.',
+  name: 'Name coupling is informational: the sides must keep matching names — any rename must update both plus all references. No action needed unless the names only accidentally match.',
   type: 'Make both sides agree on one type: define a shared type/interface and annotate both the definition and the call sites.',
   position: 'Reduce positional coupling: give the callee named parameters (object destructuring) or reorder/trim parameters so callers stop relying on position.',
   meaning: 'Extract the repeated literal into one named constant (or config value) and import it everywhere it is used.',
@@ -32,6 +33,4 @@ export function remediationFor(f: Finding): string {
   return base;
 }
 
-function short(p: string): string {
-  return p.replace(/\\/g, '/').split('/').slice(-2).join('/');
-}
+const short = shortPath;

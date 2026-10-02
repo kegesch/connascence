@@ -1,5 +1,6 @@
 import { ScanReport, ScoredEdge } from '../scoring/score.js';
 import { Severity, severityOf } from './severity.js';
+import { shortPath } from '../paths.js';
 
 export interface Finding {
   kind: string;
@@ -16,9 +17,16 @@ export interface Finding {
   fix?: string;
 }
 
-function memberOf(e: ScoredEdge) {
-  return { filePath: e.nodeB.filePath, startLine: e.nodeB.startLine, name: e.nodeB.name };
+type MemberRef = { filePath: string; startLine: number; name: string };
+type EdgeEndpointRef = Pick<ScoredEdge, 'nodeA' | 'nodeB'>;
+
+function memberAt<K extends 'nodeA' | 'nodeB'>(e: EdgeEndpointRef, side: K): MemberRef {
+  const n = e[side];
+  return { filePath: n.filePath, startLine: n.startLine, name: n.name };
 }
+
+const memberOf = (e: EdgeEndpointRef) => memberAt(e, 'nodeB');
+const memberA = (e: EdgeEndpointRef) => memberAt(e, 'nodeA');
 
 /**
  * Collapse pairwise edges into per-root-cause findings:
@@ -132,6 +140,9 @@ export function clusterFindings(edges: ScoredEdge[]): Finding[] {
     const callSites = dedupe(group.map(memberA));
     const callee = group[0].nodeB;
     const paramNames = dedupe(group.map(memberOf)).map((m) => m.name);
+    // with a single parameter there is no position to get wrong — that coupling
+    // is name/type, not position; reporting it is noise with bad fix advice.
+    if (paramNames.length < 2) continue;
     const params = paramNames.join(', ');
     findings.push({
       kind: 'position',
@@ -146,13 +157,18 @@ export function clusterFindings(edges: ScoredEdge[]): Finding[] {
 
   for (const e of dedupedNameEdges) {
     if (consumed.has(e)) continue;
+    const ref = e.nodeA;
+    const def = e.nodeB;
     findings.push({
       kind: e.connascenceType,
-      summary: e.evidence,
+      summary: `${ref.name} is coupled by name: ${relShort(ref.filePath)}:${ref.startLine} <-> ${def.name} (${relShort(def.filePath)}:${def.startLine})`,
       edgeCount: 1,
       members: [memberA(e), memberOf(e)],
       worst: e,
-      severity: severityOf(e),
+      // name is the weakest connascence (strength 1) and import-by-name is
+      // unavoidable — informational, never worth blocking on
+      severity: 'low',
+      fix: `keep ${ref.name} and ${def.name} in sync: any rename must change both sides plus every reference; if the names only accidentally match, that is fine — no action needed`,
     });
   }
 
@@ -167,12 +183,8 @@ export function clusterFindings(edges: ScoredEdge[]): Finding[] {
   return findings;
 }
 
-function memberA(e: ScoredEdge) {
-  return { filePath: e.nodeA.filePath, startLine: e.nodeA.startLine, name: e.nodeA.name };
-}
-
 function relShort(p: string): string {
-  return p.replace(/\\/g, '/').split('/').slice(-2).join('/');
+  return shortPath(p);
 }
 
 const TEST_FILE = /\.test\.[cm]?[jt]sx?$|\.spec\.[cm]?[jt]sx?$|(^|\/)__tests__\//i;

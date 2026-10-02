@@ -60,6 +60,27 @@ describe('clusterFindings', () => {
     expect(findings[0].members.length).toBe(4); // 2 call sites + 2 params
   });
 
+  it('does not report single-parameter callees as position connascence', () => {
+    // one param = no position to get wrong; that coupling is name/type, not position
+    const findings = clusterFindings([
+      edge({ filePath: 'a.ts', startLine: 1 }, { filePath: 'b.ts', startLine: 10, name: 'edges' }, { connascenceType: 'position', strength: 4, evidence: 'slot0' }),
+      edge({ filePath: 'c.ts', startLine: 5 }, { filePath: 'b.ts', startLine: 10, name: 'edges' }, { connascenceType: 'position', strength: 4, evidence: 'slot0' }),
+    ]);
+    expect(findings).toHaveLength(0);
+  });
+
+  it('demotes findings whose locations are all in test files to low severity', () => {
+    const findings = clusterFindings([
+      edge(
+        { filePath: 'src/x.test.ts', startLine: 1, name: 'foo' },
+        { filePath: 'src/x.test.ts', startLine: 2, name: 'bar' },
+        { connascenceType: 'algorithm', strength: 5, locality: 4, evidence: 'clone' },
+      ),
+    ]);
+    // strength 5 + locality 4 would be high in src/, but both sites are in a test file
+    expect(findings[0].severity).toBe('low');
+  });
+
   it('dedupes repeated identical name edges', () => {
     const findings = clusterFindings([
       edge({ filePath: 'a.ts', startLine: 1 }, { filePath: 'b.ts', startLine: 2 }, { connascenceType: 'name', strength: 1, evidence: 'r1' }),
