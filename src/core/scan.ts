@@ -25,7 +25,14 @@ export function scan(files: string[], config: ConnascenceConfig = {}): ScanRepor
   project.edges.push(...detectPosition(project));
   project.edges.push(...detectAlgorithm(project));
   project.edges.push(...detectType(project, adapter));
-  project.edges.push(...detectMeaning(project));
+  project.edges.push(...detectMeaning(project, {
+    isUnionDiscriminant: (node) =>
+      adapter.isStringUnionMember(
+        node.location.filePath,
+        node.location.startLine,
+        node.location.startColumn,
+      ),
+  }));
   project.edges.push(...detectIdentity(project));
   project.edges.push(...detectValue(project));
   return scoreProject(project);

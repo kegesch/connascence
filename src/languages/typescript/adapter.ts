@@ -1,4 +1,4 @@
-import { Symbol as TsSymbol } from 'ts-morph';
+import { Project, SyntaxKind, Symbol as TsSymbol } from 'ts-morph';
 import { SymbolTable } from './symbolTable.js';
 import { SemanticAdapter } from '../../core/adapter.js';
 
@@ -25,8 +25,11 @@ function typeOfSymbol(symbol: TsSymbol): string | undefined {
 
 export class TypeScriptAdapter implements SemanticAdapter {
   private readonly types = new Map<string, string>();
+  /** filePath -> set of line / "line:column" keys holding string literals typed as string-literal-union members */
+  private readonly unionLinesByFile = new Map<string, Set<string>>();
 
   constructor(symbolTable: SymbolTable) {
+    this.tsProject = symbolTable.tsProject;
     for (const [refId, symbol] of symbolTable.refIdToSymbol) {
       const t = typeOfSymbol(symbol);
       if (t) this.types.set(refId, t);
@@ -39,5 +42,52 @@ export class TypeScriptAdapter implements SemanticAdapter {
 
   resolveType(nodeId: string): string | undefined {
     return this.types.get(nodeId);
+  }
+
+  isStringUnionMember(filePath: string, startLine: number, startColumn?: number): boolean {
+    const positions = this.unionPositions(filePath);
+    if (startColumn === undefined) return positions.has(String(startLine));
+    return positions.has(`${startLine}:${startColumn}`);
+  }
+
+  private tsProject: Project;
+
+  /**
+   * Lazily compute, per source file, the string literals that are members of a
+   * union of string literals. Keyed by exact line (and "line:column" when the
+   * caller supplies a column, so multiple literals on one line are told apart).
+   */
+  private unionPositions(filePath: string): Set<string> {
+    const cached = this.unionLinesByFile.get(filePath);
+    if (cached) return cached;
+    const positions = new Set<string>();
+    const sourceFile = this.tsProject.getSourceFile(filePath);
+    if (sourceFile) {
+      const checker = this.tsProject.getTypeChecker();
+      for (const lit of sourceFile.getDescendantsOfKind(SyntaxKind.StringLiteral)) {
+        let contextual;
+        try {
+          contextual = checker.getContextualType(lit);
+        } catch {
+          continue;
+        }
+        if (!contextual?.isUnion()) continue;
+        const union = contextual.getUnionTypes();
+        if (!union.every((u) => u.isStringLiteral())) continue;
+        // the literal must actually be one of the union's members ('MAGIC' against
+        // FileMode = 'read' | 'write' shares the contextual union but isn't assignable)
+        try {
+          if (checker.isTypeAssignableTo(lit.getType(), contextual)) {
+            const lc = sourceFile.getLineAndColumnAtPos(lit.getStart());
+            positions.add(`${lc.line}`);
+            positions.add(`${lc.line}:${lc.column}`);
+          }
+        } catch {
+          continue;
+        }
+      }
+    }
+    this.unionLinesByFile.set(filePath, positions);
+    return positions;
   }
 }

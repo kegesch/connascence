@@ -9,6 +9,8 @@ import { subtreeHash } from './structureHash.js';
 
 export interface SymbolTable {
   project: IrProject;
+  /** the underlying ts-morph project, for semantic adapters (never used by core) */
+  tsProject: Project;
   /** map from IR reference-node id to the ts-morph symbol it resolves to */
   refIdToSymbol: Map<string, TsSymbol>;
   /** map from IR definition-node id to the ts-morph symbol it declares */
@@ -163,6 +165,7 @@ export function buildSymbolTable(filePathOrGlobs: string[]): SymbolTable {
 
   return {
     project: { nodes, edges: [] },
+    tsProject: project,
     refIdToSymbol,
     defIdToSymbol,
     refIdToDefId,

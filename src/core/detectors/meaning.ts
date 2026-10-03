@@ -10,6 +10,10 @@ export interface MeaningDetectorOptions {
   /** skip trivial string literals (empty string, single characters like '/' or ':')
    *  whose repetition is rarely actionable. Default true. */
   skipTrivial?: boolean;
+  /** optional semantic predicate (supplied via the language adapter): return true when the
+   *  literal node is a type-checked member of a union of string literals (e.g. a string
+   *  discriminant) — those are enum-like, not magic values, and are skipped. */
+  isUnionDiscriminant?: (node: IrNode) => boolean;
 }
 
 /**
@@ -33,6 +37,9 @@ export function detectMeaning(
     if (node.kind !== 'literal') continue;
     const value = node.name.replace(/^['"](.*)['"]$/, '$1');
     if (skipNumbers && /^-?\d+(\.\d+)?$/.test(value)) continue;
+    // typed union members (e.g. connascenceType: 'meaning') are discriminants,
+    // not magic values — extracting them into constants would lose type safety
+    if (options.isUnionDiscriminant?.(node)) continue;
     // trivial literals: extracting '' or '/' into a named constant is noise —
     // there is no meaning to share beyond "a separator / the empty value"
     if (skipTrivial && value.length < 2) continue;
