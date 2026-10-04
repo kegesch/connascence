@@ -15,3 +15,10 @@ ignore:
 gate:
   minStrength: 7   # 7 = timing; 1..9 weakest..strongest (see connascence.io)
   minLocality: 4   # 4 = cross-module
+
+# Architecture: fail when the graph-detected module structure (scan --format=architecture)
+# exceeds these. Modules are detected from the dependency graph, not folders.
+architecture:
+  maxTangles: 0      # module pairs coupled in both directions
+  maxCycles: 0       # module dependency cycles
+  # maxMismatches: 3 # modules spanning multiple directories (folder/structure mismatch)

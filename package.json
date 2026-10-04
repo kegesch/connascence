@@ -6,7 +6,7 @@
   "scripts": {
     "test": "vitest run",
     "build": "tsc",
-    "cli": "tsc && node dist/core/cli.js"
+    "cli": "tsc && node dist/cli.js"
   },
   "keywords": [],
   "author": "",

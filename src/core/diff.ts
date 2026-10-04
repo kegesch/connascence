@@ -2,14 +2,16 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { scan } from './scan.js';
+import { ScanBackend } from './scan.js';
 import { ConnascenceConfig } from './config.js';
 import { ScoredEdge, ScanReport } from './scoring/score.js';
 import { toPosix } from './paths.js';
 
-export { HEURISTIC_TYPES } from './scoring/score.js';
-
 export interface DiffOptions {
+  /** scan pipeline to run at each ref (injected by the composition root) */
+  scanFn: (files: string[], config: { ignore?: string[] }, backend: ScanBackend) => ScanReport;
+  /** language backend to scan with (injected by the composition root) */
+  backend: ScanBackend;
   /** path to the git repository working tree */
   repoPath: string;
   /** base git ref to compare against */
@@ -63,7 +65,7 @@ function edgeKey(root: string, e: ScoredEdge): string {
  */
 export function diffScan(opts: DiffOptions): DiffResult {
   const repo = path.resolve(opts.repoPath);
-  const { base, head = 'working', globs, config = {} } = opts;
+  const { base, head = 'working', globs, config = {}, backend, scanFn } = opts;
 
   const scanAt = (ref: string): { report: ScanReport; root: string } => {
     const dir = materializeRef(repo, ref);
@@ -81,7 +83,7 @@ export function diffScan(opts: DiffOptions): DiffResult {
         : g;
       return path.posix.join(toPosix(root), toPosix(repoRelative));
     });
-    return { report: scan(globPaths, config), root };
+    return { report: scanFn(globPaths, config, backend), root };
   };
 
   const baseScan = scanAt(base);

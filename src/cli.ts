@@ -1,17 +1,20 @@
 #!/usr/bin/env node
 import path from 'node:path';
 import { writeFileSync } from 'node:fs';
-import { scan } from './scan.js';
-import { explain } from './explain.js';
-import { loadConfig, evaluateConfig, filterHeuristics } from './config.js';
-import { clusterFindings, fileHotspots } from './report/findings.js';
-import { remediationFor, remediationForType } from './report/remediation.js';
-import { dirCohesion, cohesionFix, fileSplits } from './report/cohesion.js';
-import { toPosix } from './paths.js';
-import type { ScoredEdge } from './scoring/score.js';
-import { renderHtml } from './report/html.js';
-import { renderSarif } from './report/sarif.js';
-import { diffScan, HEURISTIC_TYPES } from './diff.js';
+import { scan } from './core/scan.js';
+import { explain } from './core/explain.js';
+import { loadConfig, evaluateConfig, filterHeuristics } from './core/config.js';
+import { clusterFindings, fileHotspots } from './core/report/findings.js';
+import { remediationFor, remediationForType } from './core/report/remediation.js';
+import { dirCohesion, cohesionFix, fileSplits } from './core/report/cohesion.js';
+import { evaluateArchitecture, architectureLevels, renderArchitectureLevels } from './core/report/architecture.js';
+import { toPosix } from './core/paths.js';
+import { HEURISTIC_TYPES } from './core/scoring/score.js';
+import type { ScoredEdge } from './core/scoring/score.js';
+import { renderHtml } from './core/report/html.js';
+import { renderSarif } from './core/report/sarif.js';
+import { diffScan } from './core/diff.js';
+import { typescriptBackend } from './languages/typescript/backend.js';
 
 const OUTPUT_ENCODING: BufferEncoding = 'utf8';
 
@@ -22,7 +25,7 @@ function usage(): never {
   console.error('  --file=<pattern>       only edges touching files whose path contains this substring');
   console.error('  --min-degree=<n>       only edges with degree >= n');
   console.error('  --top=<n>              limit listed items (default 20, 0 = all)');
-  console.error('  --format=summary|findings|json|html|sarif|agent');
+  console.error('  --format=summary|findings|architecture|json|html|sarif|agent');
   console.error('  --out=<file>           write JSON or HTML to file (UTF-8) instead of stdout');
   console.error('  --config=<file>        config file (default .connascence.yml if present)');
   console.error('       connascence explain <scan-glob...> -- <file>:<line>');
@@ -76,7 +79,7 @@ const config = loadConfig(configPath);
 // ---- diff command: coupling introduced/removed between git refs ----
 if (command === 'diff') {
   if (!repoPath || !baseRef) usage();
-  const result = diffScan({ repoPath, base: baseRef, head: headRef, globs: patterns, config });
+  const result = diffScan({ scanFn: scan, backend: typescriptBackend, repoPath, base: baseRef, head: headRef, globs: patterns, config });
   let added = filterHeuristics(result.added, config);
   if (minStrength > 0) added = added.filter((e) => e.strength >= minStrength);
   if (types.length > 0) added = added.filter((e) => types.includes(e.connascenceType));
@@ -136,7 +139,7 @@ if (command === 'diff') {
   process.exit(added.length > 0 ? 1 : 0);
 }
 
-const report = scan(patterns, config);
+const report = scan(patterns, config, typescriptBackend);
 
 let edges = filterHeuristics(report.edges, config);
 if (minStrength > 0) edges = edges.filter((e) => e.strength >= minStrength);
@@ -149,7 +152,10 @@ if (filePattern) {
   );
 }
 
-const rel = (p: string) => p.replace(/\\/g, '/').replace(/^.*chordel\/app\//, '');
+const rel = (p: string) => {
+  const r = path.relative('.', p).replace(/\\/g, '/');
+  return r.startsWith('..') ? p.replace(/\\/g, '/') : r || '.';
+};
 
 if (command === 'explain') {
   if (!fileLine) usage();
@@ -226,6 +232,21 @@ if (format === 'summary') {
         `    fix: split into separate modules: ${s.groups.slice(0, 3).map((g) => `[${g.slice(0, 5).map((f) => `${f.name}:${f.startLine}`).join(', ')}${g.length > 5 ? ', …' : ''}]`).join(' ')}`,
       );
     }
+  }
+  process.exit(0);
+}
+
+if (format === 'architecture') {
+  const levels = architectureLevels(edges);
+  for (const line of renderArchitectureLevels(levels, rel)) console.log(line);
+  // gate at every level of the module hierarchy � submodules must be clean too
+  const archViolations = levels.flatMap((lvl, i) =>
+    evaluateArchitecture(lvl, config).map((v) => ({ ...v, message: `level ${i + 1}: ${v.message}` })),
+  );
+  if (archViolations.length > 0) {
+    console.error('\narchitecture violations:');
+    for (const v of archViolations) console.error(`  [${v.kind}] ${v.message}`);
+    process.exit(1);
   }
   process.exit(0);
 }

@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { diffScan } from '../../src/core/diff.ts';
+import { scan } from '../../src/core/scan.ts';
+import { typescriptBackend } from '../../src/languages/typescript/backend.ts';
 
 let repo: string;
 let ref1: string;
@@ -48,7 +50,7 @@ afterAll(() => {
 
 describe('diffScan', () => {
   it('reports coupling introduced between two refs', () => {
-    const result = diffScan({ repoPath: repo, base: ref1, head: ref2, globs: ['src/**/*.ts'] });
+    const result = diffScan({ scanFn: scan, backend: typescriptBackend, repoPath: repo, base: ref1, head: ref2, globs: ['src/**/*.ts'] });
     const positionAdded = result.added.filter((e) => e.connascenceType === 'position');
     expect(positionAdded.length).toBeGreaterThanOrEqual(5); // 5 args into 5-param connect()
     expect(result.headSummary.position).toBeGreaterThan(0);
@@ -56,13 +58,15 @@ describe('diffScan', () => {
   }, 60000);
 
   it('reports reverse direction as removed', () => {
-    const result = diffScan({ repoPath: repo, base: ref2, head: ref1, globs: ['src/**/*.ts'] });
+    const result = diffScan({ scanFn: scan, backend: typescriptBackend, repoPath: repo, base: ref2, head: ref1, globs: ['src/**/*.ts'] });
     expect(result.removed.some((e) => e.connascenceType === 'position')).toBe(true);
     expect(result.added.filter((e) => e.connascenceType === 'position')).toHaveLength(0);
   }, 60000);
 
   it('heuristicFindings=exclude drops heuristic edges', () => {
     const result = diffScan({
+      scanFn: scan,
+      backend: typescriptBackend,
       repoPath: repo,
       base: ref1,
       head: ref2,

@@ -1,6 +1,6 @@
 import { parse } from 'yaml';
 import { readFileSync, existsSync } from 'node:fs';
-import { ConnascenceType, IrProject } from './ir.js';
+import { ConnascenceType } from './ir.js';
 import { ScanReport } from './scoring/score.js';
 import { strengthOf } from './scoring/strength.js';
 
@@ -16,6 +16,13 @@ export interface ConnascenceConfig {
   };
   /** 'exclude' drops heuristic detectors (meaning/value/identity) from all output. Default 'include'. */
   heuristicFindings?: 'include' | 'exclude';
+  /** fail the run when the architecture report (graph-detected modules) exceeds these */
+  architecture?: {
+    maxTangles?: number;
+    maxCycles?: number;
+    /** modules spanning more directories than this (structure/folder mismatch) */
+    maxMismatches?: number;
+  };
 }
 
 export function loadConfig(path = '.connascence.yml'): ConnascenceConfig {
@@ -23,31 +30,8 @@ export function loadConfig(path = '.connascence.yml'): ConnascenceConfig {
   return (parse(readFileSync(path, 'utf8')) as ConnascenceConfig) ?? {};
 }
 
-/** Simple glob match: ** crosses directories, * matches within one segment, ? one char. */
-export function globMatch(pattern: string, pathValue: string): boolean {
-  const re = new RegExp(
-    '^' +
-      pattern
-        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-        .replace(/\*\*/g, '\u0000')
-        .replace(/\*/g, '[^/]*')
-        .replace(/\?/g, '.')
-        .replace(/\u0000/g, '.*') +
-      '$',
-  );
-  return re.test(pathValue.replace(/\\/g, '/'));
-}
-
-/** Drop IR nodes belonging to ignored files (edges referencing them fall away in detectors). */
-export function applyIgnores(project: IrProject, ignore: string[] | undefined): void {
-  if (!ignore || ignore.length === 0) return;
-  project.nodes = project.nodes.filter(
-    (n) => !ignore.some((pattern) => globMatch(pattern, n.location.filePath)),
-  );
-}
-
 export interface Violation {
-  kind: 'threshold' | 'gate';
+  kind: 'threshold' | 'gate' | 'architecture';
   message: string;
 }
 
@@ -81,3 +65,5 @@ export function evaluateConfig(report: ScanReport, config: ConnascenceConfig): V
   }
   return violations;
 }
+
+

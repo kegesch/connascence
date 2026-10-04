@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { globMatch, evaluateConfig } from '../../src/core/config.ts';
+import { globMatch } from '../../src/core/scan.ts';
+import { evaluateConfig } from '../../src/core/config.ts';
+import { evaluateArchitecture } from '../../src/core/report/architecture.ts';
 import type { ScanReport } from '../../src/core/scoring/score.ts';
 
 describe('globMatch', () => {
@@ -52,5 +54,36 @@ describe('evaluateConfig', () => {
 
   it('missing types count as 0', () => {
     expect(evaluateConfig(baseReport, { thresholds: { timing: 0 } })).toHaveLength(0);
+  });
+});
+
+describe('evaluateArchitecture', () => {
+  const arch = {
+    modules: [],
+    tangles: [{ a: 'x', b: 'y', forward: {} as never, backward: {} as never }],
+    dependencies: [],
+    cycles: [['x', 'y', 'x']],
+    mismatches: [{ name: 'm', files: ['a'], dirs: ['d1', 'd2'] }],
+    clusters: 1,
+    dependencyEdges: 1,
+  } as never;
+
+  it('passes with no architecture config', () => {
+    expect(evaluateArchitecture(arch, {})).toHaveLength(0);
+  });
+
+  it('flags tangles, cycles, and mismatches over the configured bounds', () => {
+    const violations = evaluateArchitecture(arch, {
+      architecture: { maxTangles: 0, maxCycles: 0, maxMismatches: 0 },
+    });
+    expect(violations).toHaveLength(3);
+    expect(violations.every((v) => v.kind === 'architecture')).toBe(true);
+  });
+
+  it('passes when within bounds', () => {
+    const violations = evaluateArchitecture(arch, {
+      architecture: { maxTangles: 1, maxCycles: 1, maxMismatches: 1 },
+    });
+    expect(violations).toHaveLength(0);
   });
 });

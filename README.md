@@ -1,4 +1,4 @@
-# connascence
+﻿# connascence
 
 A CLI that statically measures **connascence** (coupling, per [connascence.io](https://connascence.io)) in a TypeScript/JavaScript codebase: it detects coupling between code entities, classifies it by type, and scores each instance on **strength**, **locality**, and **degree** to produce a ranked, actionable report.
 
@@ -20,32 +20,33 @@ npm run cli -- explain <path-glob...> -- <file>:<line>
 npm run cli -- diff <path-glob...> --repo=<repo> --base=<gitref> [--head=<gitref>] [options]
 ```
 
-(`npm run cli` rebuilds and runs `dist/core/cli.js`; pass args after `--`.)
+(`npm run cli` rebuilds and runs `dist/cli.js`; pass args after `--`.)
 
 ### `scan` options
 
 | Option | Meaning |
 |---|---|
-| `--format=summary` | (default) **fix-first linter-style report**: findings grouped by severity (HIGH → LOW), clustered (clone groups, per-callee positional signatures, mutable vars); each finding's summary names the exact function/location to change, followed by a `fix:` line with concrete remediation; findings whose locations are all in test files (`*.test.*` / `*.spec.*` / `__tests__/`) are demoted to `low` since test↔code coupling is expected; `name` findings (import-by-name coupling — permanent, informational, no action possible) are **omitted entirely** unless explicitly requested via `--type=name` (the underlying edges remain in `--format=json`); callees with a single parameter are never reported as position connascence; plus **module structure** sections: per-directory cohesion (external fan-in "junk drawer" detection; file-group split suggestions via affinity — direct references plus shared dependencies/consumers) and file split candidates (independent function groups inside one file, reconstructed from the call graph); raw measurements (strength/locality/degree/counts) are omitted — use `--format=json` for them |
+| `--format=summary` | (default) **fix-first linter-style report**: findings grouped by severity (HIGH â†’ LOW), clustered (clone groups, per-callee positional signatures, mutable vars); each finding's summary names the exact function/location to change, followed by a `fix:` line with concrete remediation; findings whose locations are all in test files (`*.test.*` / `*.spec.*` / `__tests__/`) are demoted to `low` since testâ†”code coupling is expected; `name` findings (import-by-name coupling â€” permanent, informational, no action possible) are **omitted entirely** unless explicitly requested via `--type=name` (the underlying edges remain in `--format=json`); callees with a single parameter are never reported as position connascence; plus **module structure** sections: per-directory cohesion (external fan-in "junk drawer" detection; file-group split suggestions via affinity â€” direct references plus shared dependencies/consumers) and file split candidates (independent function groups inside one file, reconstructed from the call graph); raw measurements (strength/locality/degree/counts) are omitted â€” use `--format=json` for them |
 | `--min-severity=<s>` | hide findings below `low` / `medium` / `high` (default `medium`; `low` shows everything) |
 | `--format=findings` | clustered findings (clone groups, meaning clusters, shared mutable vars) with strength labels + file hotspot table |
+| ``--format=architecture`` | architecture overview: **modules are detected from the dependency graph itself** (Louvain communities over the strength-weighted file reference graph), not from folders; reports a one-line **verdict** per level ("layered architecture — N layers, dependencies point one way only" or "NO layering possible — X cycle(s) must be broken first"), the **module hierarchy** (top-level macro-modules first, then each submodule level detected by contracting the graph and re-clustering — submodules must satisfy the same rules as top-level modules, and dirt hidden by a merge at the coarse level is reported at the level where it exists), the **layering** itself when the module graph is acyclic (foundation first, higher layers depend only on lower ones), **tangles** (modules coupled in both directions), **dependency cycles** between modules, **structure mismatches** (a detected module spanning several directories — the folder layout hides or splits a real module, the "missing structure" signal), and the strongest one-way dependencies. Healthy layering / clean architecture shows as few modules with strictly one-way, acyclic dependencies; vertical slices show as many independent modules with low cross-coupling |
 | `--format=json` | full machine-readable JSON on stdout |
 | `--format=html` | self-contained interactive HTML report (summary bars, filterable findings, hotspots) |
-| `--format=sarif` | SARIF 2.1.0 (GitHub code scanning / SARIF viewers); level by strength: ≥7 error, ≥4 warning, else note |
+| `--format=sarif` | SARIF 2.1.0 (GitHub code scanning / SARIF viewers); level by strength: â‰¥7 error, â‰¥4 warning, else note |
 | `--format=agent` | (diff only) compact one-line-per-finding feedback for AI agents / harnesses |
 | `--out=<file>` | write JSON or HTML to file in UTF-8 instead of stdout |
 | `--type=<t,t>` | only these connascence types (`name,type,meaning,position,algorithm,value,identity`) |
-| `--min-strength=<1-9>` | only edges at/above this strength (1 = name … 9 = identity) |
-| `--min-degree=<n>` | only edges whose node degree ≥ n |
+| `--min-strength=<1-9>` | only edges at/above this strength (1 = name â€¦ 9 = identity) |
+| `--min-degree=<n>` | only edges whose node degree â‰¥ n |
 | `--file=<pattern>` | only edges touching paths containing this substring |
 | `--top=<n>` | limit listed items (default 20, 0 = all) |
 | `--config=<file>` | config file (default `.connascence.yml` if present) |
 
-Exit code is `1` when the config's thresholds or gate are violated — usable as a CI check.
+Exit code is `1` when the config's thresholds or gate are violated â€” usable as a CI check.
 
-### `diff` — coupling introduced by a change
+### `diff` â€” coupling introduced by a change
 
-Compares the coupling graph between two git refs (both refs are scanned via `git archive` into temp dirs; `--head` omitted = current working tree). Exits `1` if any coupling was added — the post-edit quality gate for agent harnesses:
+Compares the coupling graph between two git refs (both refs are scanned via `git archive` into temp dirs; `--head` omitted = current working tree). Exits `1` if any coupling was added â€” the post-edit quality gate for agent harnesses:
 
 ```bash
 npm run cli -- diff "src/**/*.ts" "src/**/*.tsx" --repo=. --base=HEAD --format=agent
@@ -85,20 +86,20 @@ npm run cli -- explain "src/**/*.ts" -- src/foo.ts:42
 
 | Type | Detected | Strategy |
 |---|---|---|
-| Name | yes | symbol-table reference→definition edges (same-scope refs excluded) |
+| Name | yes | symbol-table referenceâ†’definition edges (same-scope refs excluded) |
 | Type | yes | TypeChecker: value flows hard-coupled to a shared non-primitive type |
-| Meaning | heuristic | repeated magic literals as call arguments (numbers, trivial single-character literals like `''` or `'/'`, and type-checked string-union members like `'read'` against `type FileMode = 'read' \| 'write'` — resolved via the semantic adapter — skipped) |
+| Meaning | heuristic | repeated magic literals as call arguments (numbers, trivial single-character literals like `''` or `'/'`, and type-checked string-union members like `'read'` against `type FileMode = 'read' \| 'write'` â€” resolved via the semantic adapter â€” skipped) |
 | Position | yes | args bound positionally into >3-param signatures |
 | Algorithm | yes | normalized subtree-hash clone detection |
 | Value | heuristic | named constants sharing a literal value across files |
 | Identity | heuristic | mutable module-level variables accessed cross-scope |
 | Execution / Timing | not yet | lowest priority per spec |
 
-Heuristic detectors always attach an `evidence` string — treat those findings as candidates to review, not certainties. The default summary view reflects this: deterministic findings are listed first, heuristic candidates in a separate, clearly-labeled section.
+Heuristic detectors always attach an `evidence` string â€” treat those findings as candidates to review, not certainties. The default summary view reflects this: deterministic findings are listed first, heuristic candidates in a separate, clearly-labeled section.
 
 ## Using it as an agent-harness quality gate
 
-The intended edit→feedback loop after an AI agent (or human) changes files:
+The intended editâ†’feedback loop after an AI agent (or human) changes files:
 
 ```bash
 # 1. feedback for the agent prompt (deterministic, one line per finding)
@@ -116,7 +117,7 @@ Tip: set `heuristicFindings: exclude` in `.connascence.yml` while gating so agen
 
 ## Config (`.connascence.yml`)
 
-See `.connascence.yml.example`. Three sections:
+See `.connascence.yml.example`. Four sections:
 
 ```yaml
 thresholds:          # fail when a type's total count exceeds the value
@@ -127,13 +128,17 @@ gate:                # fail when any edge meets both bounds
   minStrength: 7
   minLocality: 4     # 4 = cross-module
 heuristicFindings: include   # or 'exclude' to drop meaning/value/identity everywhere
+architecture:        # fail when the graph-detected module structure exceeds these (checked at every level of the module hierarchy, incl. submodules)
+  maxTangles: 0      # module pairs coupled in both directions
+  maxCycles: 0       # module dependency cycles
+  maxMismatches: 3   # modules spanning multiple directories (folder/structure mismatch)
 ```
 
 ## Scoring
 
-- **Strength** — static table per connascence.io ranking: name(1) < type(2) < meaning(3) < position(4) < algorithm(5) < execution(6) < timing(7) < value(8) < identity(9)
-- **Locality** — nearest-common-ancestor scope walk: 1 = same function, 2 = same class, 3 = same module (file), 4 = same package (directory), 5 = cross-directory
-- **Degree** — per-node edge count per type (hub detection)
+- **Strength** â€” static table per connascence.io ranking: name(1) < type(2) < meaning(3) < position(4) < algorithm(5) < execution(6) < timing(7) < value(8) < identity(9)
+- **Locality** â€” nearest-common-ancestor scope walk: 1 = same function, 2 = same class, 3 = same module (file), 4 = same package (directory), 5 = cross-directory
+- **Degree** â€” per-node edge count per type (hub detection)
 
 ## Adding a language
 
