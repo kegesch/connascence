@@ -1,6 +1,5 @@
-import path from 'node:path';
 import { ScoredEdge } from '../scoring/score.js';
-import { toPosix } from '../paths.js';
+import { dirOf } from '../paths.js';
 
 /** Dependency edge types that are reliable enough to infer module structure from
  *  (import/reference edges — not the heuristic candidates). */
@@ -46,8 +45,58 @@ export interface DirCohesion {
   clusters: string[][];
 }
 
-function dirOf(filePath: string): string {
-  return path.posix.dirname(toPosix(filePath));
+interface DirStats {
+  internalEdges: number;
+  fanIn: Map<string, number>;
+  depsOut: Map<string, Set<string>>;
+  consumers: Map<string, Set<string>>;
+  rootOf: (f: string) => string;
+}
+
+/** Union-find clusters for one directory: direct intra-dir edges, plus an
+ *  affinity pass — two files belong together if they also depend on the same
+ *  external targets / are consumed by the same external files (shared fan-out /
+ *  fan-in). Files with only accidental adjacency end up in different clusters. */
+function clusterDir(dir: string, files: Set<string>, dep: ScoredEdge[], fileDir: Map<string, string>): DirStats {
+  const { find, union } = unionFind();
+  const stats: DirStats = {
+    internalEdges: 0,
+    fanIn: new Map(),
+    depsOut: new Map(),
+    consumers: new Map(),
+    rootOf: find,
+  };
+
+  for (const e of dep) {
+    const fa = e.nodeA.filePath;
+    const fb = e.nodeB.filePath;
+    const dirA = fileDir.get(fa);
+    const dirB = fileDir.get(fb);
+    if (dirA === dir && dirB === dir) {
+      stats.internalEdges++;
+      union(fa, fb);
+    } else if (dirB === dir && dirA !== dir) {
+      stats.fanIn.set(dirA!, (stats.fanIn.get(dirA!) ?? 0) + 1);
+      if (!stats.consumers.has(fb)) stats.consumers.set(fb, new Set());
+      stats.consumers.get(fb)!.add(fa);
+    } else if (dirA === dir && dirB !== dir) {
+      if (!stats.depsOut.has(fa)) stats.depsOut.set(fa, new Set());
+      stats.depsOut.get(fa)!.add(fb);
+    }
+  }
+
+  const fileList = [...files];
+  for (let i = 0; i < fileList.length; i++) {
+    for (let j = i + 1; j < fileList.length; j++) {
+      const a = fileList[i];
+      const b = fileList[j];
+      if (find(a) === find(b)) continue;
+      const sharedOut = intersect(stats.depsOut.get(a), stats.depsOut.get(b));
+      const sharedIn = intersect(stats.consumers.get(a), stats.consumers.get(b));
+      if (sharedOut + sharedIn >= SHARED_NEIGHBORS) union(a, b);
+    }
+  }
+  return stats;
 }
 
 /**
@@ -74,57 +123,17 @@ export function dirCohesion(edges: ScoredEdge[]): DirCohesion[] {
   for (const [dir, files] of filesByDir) {
     if (files.size < 3) continue; // not a module candidate
 
-    // union-find over intra-directory edges plus affinity: two files in the same
-    // directory belong together if they reference each other OR depend on the same
-    // external targets / are consumed by the same external files (shared fan-out /
-    // fan-in). Files with only accidental adjacency end up in different clusters.
-    const { find, union } = unionFind();
-
-    let internalEdges = 0;
-    const fanIn = new Map<string, number>();
-    // per-file dependency targets (file-level), split into inside/outside the dir
-    const depsOut = new Map<string, Set<string>>(); // file -> external files it depends on
-    const consumers = new Map<string, Set<string>>(); // file -> external files depending on it
-    for (const e of dep) {
-      const fa = e.nodeA.filePath;
-      const fb = e.nodeB.filePath;
-      const dirA = fileDir.get(fa);
-      const dirB = fileDir.get(fb);
-      if (dirA === dir && dirB === dir) {
-        internalEdges++;
-        union(fa, fb);
-      } else if (dirB === dir && dirA !== dir) {
-        fanIn.set(dirA!, (fanIn.get(dirA!) ?? 0) + 1);
-        if (!consumers.has(fb)) consumers.set(fb, new Set());
-        consumers.get(fb)!.add(fa);
-      } else if (dirA === dir && dirB !== dir) {
-        if (!depsOut.has(fa)) depsOut.set(fa, new Set());
-        depsOut.get(fa)!.add(fb);
-      }
-    }
-
-    // affinity pass: >= SHARED_NEIGHBORS common external targets or consumers
-    const fileList = [...files];
-    for (let i = 0; i < fileList.length; i++) {
-      for (let j = i + 1; j < fileList.length; j++) {
-        const a = fileList[i];
-        const b = fileList[j];
-        if (find(a) === find(b)) continue;
-        const sharedOut = intersect(depsOut.get(a), depsOut.get(b));
-        const sharedIn = intersect(consumers.get(a), consumers.get(b));
-        if (sharedOut + sharedIn >= SHARED_NEIGHBORS) union(a, b);
-      }
-    }
+    const stats = clusterDir(dir, files, dep, fileDir);
 
     const clusters = new Map<string, string[]>();
     for (const f of files) {
-      const root = find(f);
+      const root = stats.rootOf(f);
       if (!clusters.has(root)) clusters.set(root, []);
       clusters.get(root)!.push(f);
     }
 
-    const externalFanIn = fanIn.size;
-    const externalEdges = [...fanIn.values()].reduce((a, b) => a + b, 0);
+    const externalFanIn = stats.fanIn.size;
+    const externalEdges = [...stats.fanIn.values()].reduce((a, b) => a + b, 0);
     const comps = [...clusters.values()].sort((a, b) => b.length - a.length);
     const realClusters = comps.filter((c) => c.length >= 2).length;
 
@@ -134,7 +143,7 @@ export function dirCohesion(edges: ScoredEdge[]): DirCohesion[] {
     result.push({
       dir,
       files: files.size,
-      internalEdges,
+      internalEdges: stats.internalEdges,
       externalEdges,
       externalFanIn,
       clusters: comps,
@@ -175,6 +184,59 @@ export interface FileSplit {
 const MIN_FUNCTIONS = 6; // below this a file is too small to bother splitting
 const MIN_GROUPS = 2; // need at least two real groups to suggest a split
 
+type Fn = { id: string; name: string; startLine: number; file: string };
+
+/** caller identity: file + innermost function scope name (IR scopePath) */
+const callerId = (n: ScoredEdge['nodeA']): string | undefined => {
+  if (!n.ownerName) return undefined;
+  return `${n.filePath}::${n.ownerName}`;
+};
+
+/** Union-find clustering of one file's functions into concern groups. */
+function splitOneFile(file: string, list: Fn[], dep: ScoredEdge[], defs: Map<string, Fn>): FileSplit['groups'] {
+  const idsInFile = new Set(list.map((f) => f.id));
+
+  // caller key -> the def node representing this function (match by name in file)
+  const callerToDef = new Map<string, Fn>();
+  for (const f of list) callerToDef.set(`${file}::${f.name}`, f);
+
+  const { find, union } = unionFind();
+
+  const callees = new Map<string, Set<string>>();
+  for (const e of dep) {
+    const caller = callerId(e.nodeA);
+    const def = defs.get(e.nodeB.id);
+    if (!caller || !def) continue;
+    const callerDef = callerToDef.get(caller);
+    if (!callerDef || callerDef.id === def.id) continue;
+    if (!callees.has(callerDef.id)) callees.set(callerDef.id, new Set());
+    callees.get(callerDef.id)!.add(def.id);
+    // direct call within the same file unites the two functions
+    if (idsInFile.has(def.id)) union(callerDef.id, def.id);
+  }
+
+  // affinity: functions sharing >=2 callees belong to one concern
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length; j++) {
+      const a = list[i].id;
+      const b = list[j].id;
+      if (find(a) === find(b)) continue;
+      if (intersect(callees.get(a), callees.get(b)) >= SHARED_NEIGHBORS) union(a, b);
+    }
+  }
+
+  const groups = new Map<string, Fn[]>();
+  for (const f of list) {
+    const root = find(f.id);
+    if (!groups.has(root)) groups.set(root, []);
+    groups.get(root)!.push(f);
+  }
+  return [...groups.values()]
+    .filter((g) => g.length >= 2)
+    .map((g) => g.sort((x, y) => x.startLine - y.startLine).map(({ name, startLine }) => ({ name, startLine })))
+    .sort((a, b) => b.length - a.length);
+}
+
 /**
  * "Split this file" suggestions: reconstruct a function-level call graph from
  * the reference edges (caller = innermost function scope of the reference site,
@@ -187,8 +249,6 @@ export function fileSplits(edges: ScoredEdge[]): FileSplit[] {
 
   const isDef = (e: ScoredEdge['nodeB']) => ['function', 'method', 'variable'].includes(e.kind);
 
-  // definitions per file
-  type Fn = { id: string; name: string; startLine: number; file: string };
   const defs = new Map<string, Fn>();
   for (const e of dep) {
     if (!isDef(e.nodeB)) continue;
@@ -200,12 +260,6 @@ export function fileSplits(edges: ScoredEdge[]): FileSplit[] {
     });
   }
 
-  // caller identity: file + innermost function scope name (IR scopePath)
-  const callerId = (n: ScoredEdge['nodeA']): string | undefined => {
-    if (!n.ownerName) return undefined;
-    return `${n.filePath}::${n.ownerName}`;
-  };
-
   const byFile = new Map<string, Fn[]>();
   for (const f of defs.values()) {
     if (!byFile.has(f.file)) byFile.set(f.file, []);
@@ -215,48 +269,8 @@ export function fileSplits(edges: ScoredEdge[]): FileSplit[] {
   const splits: FileSplit[] = [];
   for (const [file, list] of byFile) {
     if (list.length < MIN_FUNCTIONS) continue;
-    const idsInFile = new Set(list.map((f) => f.id));
-
-    // caller key -> the def node representing this function (match by name in file)
-    const callerToDef = new Map<string, Fn>();
-    for (const f of list) callerToDef.set(`${file}::${f.name}`, f);
-
-    const { find, union } = unionFind();
-
-    const callees = new Map<string, Set<string>>();
-    for (const e of dep) {
-      const caller = callerId(e.nodeA);
-      const def = defs.get(e.nodeB.id);
-      if (!caller || !def) continue;
-      const callerDef = callerToDef.get(caller);
-      if (!callerDef || callerDef.id === def.id) continue;
-      if (!callees.has(callerDef.id)) callees.set(callerDef.id, new Set());
-      callees.get(callerDef.id)!.add(def.id);
-      // direct call within the same file unites the two functions
-      if (idsInFile.has(def.id)) union(callerDef.id, def.id);
-    }
-
-    // affinity: functions sharing >=2 callees belong to one concern
-    for (let i = 0; i < list.length; i++) {
-      for (let j = i + 1; j < list.length; j++) {
-        const a = list[i].id;
-        const b = list[j].id;
-        if (find(a) === find(b)) continue;
-        if (intersect(callees.get(a), callees.get(b)) >= SHARED_NEIGHBORS) union(a, b);
-      }
-    }
-
-    const groups = new Map<string, Fn[]>();
-    for (const f of list) {
-      const root = find(f.id);
-      if (!groups.has(root)) groups.set(root, []);
-      groups.get(root)!.push(f);
-    }
-    const real = [...groups.values()]
-      .filter((g) => g.length >= 2)
-      .map((g) => g.sort((x, y) => x.startLine - y.startLine).map(({ name, startLine }) => ({ name, startLine })))
-      .sort((a, b) => b.length - a.length);
-    if (real.length >= MIN_GROUPS) splits.push({ file, groups: real });
+    const groups = splitOneFile(file, list, dep, defs);
+    if (groups.length >= MIN_GROUPS) splits.push({ file, groups });
   }
 
   return splits.sort((a, b) => b.groups.length - a.groups.length);

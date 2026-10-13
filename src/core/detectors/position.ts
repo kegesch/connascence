@@ -2,20 +2,7 @@ import { IrNode, IrProject } from '../ir.js';
 
 export const DEFAULT_POSITION_PARAM_THRESHOLD = 3;
 
-/**
- * Connascence of Position: flags call-site arguments bound positionally into
- * signatures with more than `threshold` parameters (arg-slot ↔ param-slot).
- * Pure function on the IR; relies on reference→definition resolution being
- * materialized as name edges (see detectName).
- */
-export function detectPosition(
-  project: IrProject,
-  threshold: number = DEFAULT_POSITION_PARAM_THRESHOLD,
-): IrProject['edges'] {
-  const byId = new Map<string, IrNode>(project.nodes.map((n) => [n.id, n]));
-  const edges: IrProject['edges'] = [];
-
-  // index parameter definitions by their parent definition (ordered by source position)
+function buildParamsByParent(project: IrProject): Map<string, IrNode[]> {
   const paramsByParent = new Map<string, IrNode[]>();
   for (const node of project.nodes) {
     if (node.kind !== 'parameter' || !node.parentId) continue;
@@ -28,29 +15,64 @@ export function detectPosition(
       (a, b) => a.location.startLine - b.location.startLine || a.location.startColumn - b.location.startColumn,
     );
   }
+  return paramsByParent;
+}
+
+/** Immutable context shared by all slot resolutions in one detectPosition run. */
+interface PositionContext {
+  byId: Map<string, IrNode>;
+  paramsByParent: Map<string, IrNode[]>;
+  project: IrProject;
+  threshold: number;
+}
+
+/** Resolves the parameter node the given argument slot binds into, if any. */
+function slotParam(
+  arg: IrNode,
+  ctx: PositionContext,
+): { call: IrNode; param: IrNode; slot: number; paramCount: number } | undefined {
+  if (arg.kind !== 'argument' || !arg.parentId) return undefined;
+  const call = ctx.byId.get(arg.parentId);
+  if (!call || !call.parentId) return undefined;
+
+  // resolve the callee: the call's parent reference (or the definition itself for internal calls)
+  const calleeDefId = findResolvedDef(ctx.project, call.parentId);
+  if (!calleeDefId) return undefined;
+
+  const params = ctx.paramsByParent.get(calleeDefId) ?? [];
+  if (params.length <= ctx.threshold) return undefined;
+
+  const slot = Number(arg.name);
+  if (!Number.isInteger(slot) || slot >= params.length) return undefined;
+  return { call, param: params[slot], slot, paramCount: params.length };
+}
+
+/**
+ * Connascence of Position: flags call-site arguments bound positionally into
+ * signatures with more than `threshold` parameters (arg-slot ↔ param-slot).
+ * Pure function on the IR; relies on reference→definition resolution being
+ * materialized as name edges (see detectName).
+ */
+export function detectPosition(
+  project: IrProject,
+  threshold: number = DEFAULT_POSITION_PARAM_THRESHOLD,
+): IrProject['edges'] {
+  const ctx: PositionContext = {
+    byId: new Map<string, IrNode>(project.nodes.map((n) => [n.id, n])),
+    paramsByParent: buildParamsByParent(project),
+    project,
+    threshold,
+  };
+  const edges: IrProject['edges'] = [];
 
   for (const arg of project.nodes) {
-    if (arg.kind !== 'argument' || !arg.parentId) continue;
-    const call = byId.get(arg.parentId);
-    if (!call || !call.parentId) continue;
-
-    // resolve the callee: the call's parent reference (or the definition itself for internal calls)
-    const calleeRefId = call.parentId;
-    const calleeDefId = findResolvedDef(project, calleeRefId);
-    if (!calleeDefId) continue;
-
-    const params = paramsByParent.get(calleeDefId) ?? [];
-    if (params.length <= threshold) continue;
-
-    const slot = Number(arg.name);
-    if (!Number.isInteger(slot) || slot >= params.length) continue;
-    const param = params[slot];
-
+    const match = slotParam(arg, ctx);
+    if (!match) continue;
     edges.push({
       nodeA: arg.id,
-      nodeB: param.id,
+      nodeB: match.param.id,
       connascenceType: 'position',
-      evidence: `argument slot ${slot} bound positionally into ${params.length}-parameter signature "${call.name}" (${param.name})`,
+      evidence: `argument slot ${match.slot} bound positionally into ${match.paramCount}-parameter signature "${match.call.name}" (${match.param.name})`,
     });
   }
 

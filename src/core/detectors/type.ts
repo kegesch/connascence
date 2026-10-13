@@ -24,6 +24,40 @@ function isFunctionType(typeName: string): boolean {
   return typeName.startsWith('(') || typeName.includes('=>') || /^typeof\s/.test(typeName);
 }
 
+type ResolvedTypeOptions = Required<TypeDetectorOptions>;
+
+function resolveOptions(options: TypeDetectorOptions): ResolvedTypeOptions {
+  return {
+    skipPrimitives: options.skipPrimitives ?? true,
+    crossModuleOnly: options.crossModuleOnly ?? true,
+  };
+}
+
+function isCrossModule(
+  edge: IrProject['edges'][number],
+  byId: Map<string, IrProject['nodes'][number]>,
+): boolean {
+  const a = byId.get(edge.nodeA);
+  const b = byId.get(edge.nodeB);
+  return !!a && !!b && a.location.filePath !== b.location.filePath;
+}
+
+/** True when a name edge should not produce a type edge. */
+function shouldSkipEdge(
+  edge: IrProject['edges'][number],
+  byId: Map<string, IrProject['nodes'][number]>,
+  adapter: SemanticAdapter,
+  opts: ResolvedTypeOptions,
+): boolean {
+  if (edge.connascenceType !== 'name') return true;
+  if (opts.crossModuleOnly && !isCrossModule(edge, byId)) return true;
+  const refType = adapter.resolveType(edge.nodeA);
+  const defType = adapter.resolveType(edge.nodeB);
+  if (!refType || !defType || refType !== defType) return true;
+  if (opts.skipPrimitives && (isPrimitive(refType) || isFunctionType(refType))) return true;
+  return false;
+}
+
 /**
  * Connascence of Type: for each name edge (a value flow between a reference and
  * its definition), resolve the type at both ends; when the flow hard-couples
@@ -35,24 +69,13 @@ export function detectType(
   adapter: SemanticAdapter,
   options: TypeDetectorOptions = {},
 ): IrProject['edges'] {
-  const skipPrimitives = options.skipPrimitives ?? true;
-  const crossModuleOnly = options.crossModuleOnly ?? true;
+  const opts = resolveOptions(options);
   const byId = new Map(project.nodes.map((n) => [n.id, n]));
-
-  function isCrossModule(edge: IrProject['edges'][number]): boolean {
-    const a = byId.get(edge.nodeA);
-    const b = byId.get(edge.nodeB);
-    return !!a && !!b && a.location.filePath !== b.location.filePath;
-  }
-
   const edges: IrProject['edges'] = [];
+
   for (const edge of project.edges) {
-    if (edge.connascenceType !== 'name') continue;
-    if (crossModuleOnly && !isCrossModule(edge)) continue;
+    if (shouldSkipEdge(edge, byId, adapter, opts)) continue;
     const refType = adapter.resolveType(edge.nodeA);
-    const defType = adapter.resolveType(edge.nodeB);
-    if (!refType || !defType || refType !== defType) continue;
-    if (skipPrimitives && (isPrimitive(refType) || isFunctionType(refType))) continue;
     const def = byId.get(edge.nodeB);
     edges.push({
       nodeA: edge.nodeA,
