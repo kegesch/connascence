@@ -1,0 +1,42 @@
+{
+  "name": "connscence",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "lint": "eslint .",
+    "build": "tsc",
+    "typecheck:plugin": "tsc -p tsconfig.plugin.json",
+    "cli": "tsc && node dist/cli.js"
+  },
+  "bin": {
+    "connascence": "./dist/cli.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "exports": {
+    ".": "./plugin/index.ts"
+  },
+  "files": [
+    "dist",
+    "plugin"
+  ],
+  "dependencies": {
+    "@opencode/plugin": "^2.0.32",
+    "ts-morph": "^28.0.0",
+    "typescript": "^7.0.2",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@babel/core": "^8.0.6",
+    "@babel/eslint-parser": "^8.0.7",
+    "@babel/preset-typescript": "^8.0.1",
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^26.6.2",
+    "eslint": "^9.39.5",
+    "vite": "^8.3.2",
+    "vitest": "^5.0.1"
+  }
+}

@@ -1,2 +1,4 @@
 ﻿node_modules/
 dist/
+# sensor observation log + session reports (per-machine experiment evidence)
+.coupling/

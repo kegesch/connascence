@@ -1,0 +1,78 @@
+import { detectName } from './detectors/name.js';
+import { detectPosition } from './detectors/position.js';
+import { detectAlgorithm } from './detectors/algorithm.js';
+import { detectType } from './detectors/type.js';
+import { detectMeaning } from './detectors/meaning.js';
+import { detectIdentity } from './detectors/identity.js';
+import { detectValue } from './detectors/value.js';
+import { scoreProject, ScanReport } from './scoring/score.js';
+import { IrProject } from './ir.js';
+import { SemanticAdapter } from './adapter.js';
+
+/** Simple glob match: ** crosses directories, * matches within one segment, ? one char. */
+export function globMatch(pattern: string, pathValue: string): boolean {
+  const re = new RegExp(
+    '^' +
+      pattern
+        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*\*/g, '\u0000')
+        .replace(/\*/g, '[^/]*')
+        .replace(/\?/g, '.')
+        .replace(/\u0000/g, '.*') +
+      '$',
+  );
+  return re.test(pathValue.replace(/\\/g, '/'));
+}
+
+/** Drop IR nodes belonging to ignored files (edges referencing them fall away in detectors). */
+export function applyIgnores(project: IrProject, ignore: string[] | undefined): void {
+  if (!ignore || ignore.length === 0) return;
+  project.nodes = project.nodes.filter(
+    (n) => !ignore.some((pattern) => globMatch(pattern, n.location.filePath)),
+  );
+}
+
+/** Everything the scan pipeline needs from a language backend, in IR terms. */
+export interface ScanContext {
+  project: IrProject;
+  /** reference-node id -> definition-node id (internal declarations) */
+  refIdToDefId: Map<string, string>;
+  adapter: SemanticAdapter;
+}
+
+/**
+ * Language backend contract: the composition root (CLI) injects the concrete
+ * implementation; core never imports from src/languages/.
+ */
+export interface ScanBackend {
+  build(files: string[]): ScanContext;
+}
+
+/**
+ * Scan pipeline: the injected language backend populates the IR + resolution,
+ * and all detectors/scoring consume only the IR (type checks go through
+ * SemanticAdapter).
+ */
+export function scan(
+  files: string[],
+  config: { ignore?: string[] } = {},
+  backend: ScanBackend,
+): ScanReport {
+  const { project, refIdToDefId, adapter } = backend.build(files);
+  applyIgnores(project, config.ignore);
+  project.edges = detectName(project, refIdToDefId);
+  project.edges.push(...detectPosition(project));
+  project.edges.push(...detectAlgorithm(project));
+  project.edges.push(...detectType(project, adapter));
+  project.edges.push(...detectMeaning(project, {
+    isUnionDiscriminant: (node) =>
+      adapter.isStringUnionMember(
+        node.location.filePath,
+        node.location.startLine,
+        node.location.startColumn,
+      ),
+  }));
+  project.edges.push(...detectIdentity(project));
+  project.edges.push(...detectValue(project));
+  return scoreProject(project);
+}
