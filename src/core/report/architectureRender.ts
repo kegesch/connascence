@@ -1,4 +1,5 @@
 import { ArchitectureReport, ClusterCoupling, layering } from './architecture.js';
+import { renderLevelization } from './levelizationRender.js';
 
 const COUNT = 5;
 
@@ -106,6 +107,7 @@ export function renderArchitecture(r: ArchitectureReport, rel: (p: string) => st
     renderVerdict(r),
     renderModules(r, rel),
     renderLayering(r, rel),
+    renderLevelization(r.levelization, rel, COUNT),
     renderTangles(r, rel),
     renderCycles(r, rel),
     renderMismatches(r, rel),

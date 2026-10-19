@@ -527,7 +527,38 @@ Final dogfood: `scan src/**/*.ts` = 1084 edges, **0 actionable, 0 cycles, 6
 co-change candidates**; summary shows the candidate section even when there are
 no connascence findings. 231 tests green.
 
-**Next iteration:** M3a Lakos levelization — dependency-chain depth per module
-(not Ousterhout depth), deterministic and reportable in architecture/JSON, with
-fixtures. Then `.yml` config, and only then M3b scoring.
+### Iteration 6 — 2026-10-19: Lakos levelization (file and module graphs)
+
+- `src/core/report/levelization.ts`: one generic `levelize` over an adjacency
+  map. Cycles are collapsed with the deterministic SCC helper, then Kahn over
+  the condensation assigns `level = 1 + max(dependency levels)`; `depth` is the
+  longest dependency chain (a diamond is three levels, not four). Entries are
+  sorted deepest-first then by name, so output never follows Map order.
+- Cycles do not erase the metric: all members of an SCC share one level and
+  `cyclic: true` records it. A self-reference is not a structural cycle and
+  does not change a level, matching `findFileCycles`. `fileLevelization` uses
+  only adapter-resolved `name` edges, the same certainty rule as cycles.
+- Architecture: `ArchitectureReport.levelization` is computed from the module
+  dependency graph. `layering` is now derived from these levels (one source of
+  truth); tangles/cycles still make strict layering impossible, while the
+  rendered level line shows the SCC-collapsed depth and deepest modules.
+- Scan: `ScanReport.levelization` is computed after scoring and emitted as JSON
+  `levelization`; summary/findings/agent output gets a bounded
+  `levelization (Lakos ...)` section. `scanJson.ts` is the single machine
+  payload definition, so `--out` and stdout cannot drift.
+- Tests: chain, diamond (longest chain), SCC cycle sharing a level, self-loop,
+  determinism, empty graph, file-level certainty filtering, renderer, and
+  module-level depth/cycle fixtures.
+
+Dogfood: `scan src/**/*.ts` reports **depth 6 over 42 files** (CLI at depth 6 —
+the composition root, as intended), architecture fine level depth 5, with **0
+actionable and 0 cycles**. The metric exposed a real direction smell:
+`cochange.ts` imported `globMatch` from `scan.ts`, so a history channel sat at
+depth 4 behind the whole scan pipeline. Moving `globMatch` to the foundation
+module `paths.ts` dropped `cochange.ts` to level 2 (and `paths.ts` is level 1);
+it also removed the `cochange -> scan` dependency. 242 tests green.
+
+**Next iteration:** M3a `.yml` config — make thresholds, ignores, heuristics,
+co-change options, and architecture bounds configurable, with validation and
+fixtures; then M3b scoring.
 

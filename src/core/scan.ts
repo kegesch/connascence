@@ -6,27 +6,10 @@ import { detectIdentity } from './detectors/identity.js';
 import { detectValue } from './detectors/value.js';
 import { scoreProject, ScanReport } from './scoring/score.js';
 import { findFileCycles } from './report/cycles.js';
+import { fileLevelization } from './report/levelization.js';
+import { globMatch } from './paths.js';
 import { IrProject } from './ir.js';
 import { SemanticAdapter } from './adapter.js';
-
-/** Simple glob match: ** crosses directories, * matches within one segment, ? one char. */
-export function globMatch(pattern: string, pathValue: string): boolean {
-  const re = new RegExp(
-    '^' +
-      pattern
-        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-        // `**/` matches zero or more directories, so src/**/*.ts also matches
-        // src/a.ts (git and ts-morph glob semantics, not shell globbing)
-        .replace(/\*\*\//g, '\u0001')
-        .replace(/\*\*/g, '\u0000')
-        .replace(/\*/g, '[^/]*')
-        .replace(/\?/g, '.')
-        .replace(/\u0000/g, '.*')
-        .replace(/\u0001/g, '(?:.*/)?') +
-      '$',
-  );
-  return re.test(pathValue.replace(/\\/g, '/'));
-}
 
 /** Drop IR nodes belonging to ignored files (edges referencing them fall away in detectors). */
 export function applyIgnores(project: IrProject, ignore: string[] | undefined): void {
@@ -82,7 +65,8 @@ export function scan(
   project.edges.push(...detectIdentity(project));
   project.edges.push(...detectValue(project));
   const report = scoreProject(project);
-  // graph-level findings are computed after scoring: they need resolved edges
+  // graph-level analyses are computed after scoring: they need resolved edges
   report.cycles = findFileCycles(report.edges);
+  report.levelization = fileLevelization(report.edges);
   return report;
 }

@@ -42,7 +42,8 @@ npm run cli -- diff "src/**/*.ts" --repo=. --base=main --format=agent
 See `.connascence.yml.example` for thresholds, ignores, and heuristic
 filtering; `--format=architecture` reports graph-detected modules and
 layering verdicts. `scan` also reports resolved dependency cycles (gated in
-`diff`) and temporal co-change candidates from git history
+`diff`), Lakos dependency-chain depth (file graph in JSON, module graph in
+architecture), and temporal co-change candidates from git history
 (`--co-change=off` to skip; they are review prompts and never gate).
 
 ## opencode plugin (the M0 loop)

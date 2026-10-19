@@ -247,6 +247,26 @@ describe('layering', () => {
     ];
     expect(layering(architectureReport(edges))).toBeNull();
   });
+
+  it('reports Lakos dependency-chain depth per module', () => {
+    const r = architectureReport(layered());
+    expect(r.levelization.depth).toBe(4);
+    expect(r.levelization.cyclic).toBe(false);
+    expect(Object.fromEntries(r.levelization.entries.map((e) => [e.name, e.level]))).toEqual({
+      shared: 1,
+      core: 2,
+      app: 3,
+      cli: 4,
+    });
+  });
+
+  it('collapses a module cycle into one level and marks it cyclic', () => {
+    const edges = [...layered(), dep('shared/a.ts', 'cli/run.ts')];
+    const r = architectureReport(edges);
+    expect(r.levelization.cyclic).toBe(true);
+    expect(r.levelization.depth).toBe(1);
+    expect(r.levelization.components).toBe(1);
+  });
 });
 
 describe('renderArchitecture', () => {
@@ -259,6 +279,7 @@ describe('renderArchitecture', () => {
     const lines = renderArchitecture(r, (p) => p);
     expect(lines[0]).toMatch(/^verdict: layered architecture/);
     expect(lines.some((l) => l.startsWith('layering'))).toBe(true);
+    expect(lines.some((l) => l.startsWith('levelization'))).toBe(true);
     expect(lines.some((l) => l.startsWith('OK:'))).toBe(true);
   });
 

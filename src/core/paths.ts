@@ -17,3 +17,22 @@ export function shortPath(p: string): string {
 export function dirOf(filePath: string): string {
   return path.posix.dirname(toPosix(filePath));
 }
+
+/** Simple glob match: ** crosses directories (including zero), * within one segment, ? one char. */
+export function globMatch(pattern: string, pathValue: string): boolean {
+  const re = new RegExp(
+    '^' +
+      pattern
+        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        // `**/` matches zero or more directories, so src/**/*.ts also matches
+        // src/a.ts (git and ts-morph glob semantics, not shell globbing)
+        .replace(/\*\*\//g, '\u0001')
+        .replace(/\*\*/g, '\u0000')
+        .replace(/\*/g, '[^/]*')
+        .replace(/\?/g, '.')
+        .replace(/\u0000/g, '.*')
+        .replace(/\u0001/g, '(?:.*/)?') +
+      '$',
+  );
+  return re.test(pathValue.replace(/\\/g, '/'));
+}

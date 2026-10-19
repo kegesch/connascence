@@ -3,6 +3,7 @@ import { dirOf, KEY_SEP } from '../paths.js';
 import { ConnascenceConfig, Violation } from '../config.js';
 import { louvainCommunities, wkey } from './louvain.js';
 import { stronglyConnected } from './scc.js';
+import { levelize, type Levelization } from './levelization.js';
 
 /** Dependency edge types reliable enough to infer module structure from. */
 const DEP_TYPES = new Set(['name', 'type']);
@@ -192,6 +193,8 @@ export interface ArchitectureReport {
   /** number of modules and cross-module dependency edges considered */
   clusters: number;
   dependencyEdges: number;
+  /** Lakos dependency-chain depth over the module graph (cycles collapsed) */
+  levelization: Levelization;
 }
 
 /** Directed module-to-module couplings from cross-module dependency edges. */
@@ -260,6 +263,19 @@ function findCycles(modules: FileCluster[], dependencies: ClusterCoupling[]): st
     .sort((a, b) => b.length - a.length || a[0].localeCompare(b[0]));
 }
 
+/** Lakos levels for the module dependency graph. */
+function moduleLevelization(
+  modules: FileCluster[],
+  dependencies: ClusterCoupling[],
+): Levelization {
+  const graph = new Map<string, Set<string>>();
+  for (const mod of modules) graph.set(mod.name, new Set());
+  for (const p of dependencies) {
+    if (p.from !== p.to) graph.get(p.from)?.add(p.to);
+  }
+  return levelize(graph);
+}
+
 function reportForPartition(modules: FileCluster[], dep: ScoredEdge[]): ArchitectureReport {
   const { pairs, crossEdges } = pairCouplings(modules, dep);
   const dependencies = [...pairs.values()].sort(
@@ -277,6 +293,7 @@ function reportForPartition(modules: FileCluster[], dep: ScoredEdge[]): Architec
     mismatches: modules.filter((m) => m.dirs.length >= MISMATCH_DIRS),
     clusters: modules.length,
     dependencyEdges: crossEdges,
+    levelization: moduleLevelization(modules, dependencies),
   };
 }
 
@@ -341,25 +358,14 @@ export function evaluateArchitecture(
  */
 export function layering(r: ArchitectureReport): string[][] | null {
   if (r.cycles.length > 0 || r.tangles.length > 0) return null;
-  const nameOf = new Set(r.modules.map((m) => m.name));
-  const deps = new Map<string, Set<string>>(); // module -> modules it depends on
-  for (const m of r.modules) deps.set(m.name, new Set());
-  for (const p of r.dependencies) {
-    if (nameOf.has(p.from) && nameOf.has(p.to)) deps.get(p.from)!.add(p.to);
+  const byLevel = new Map<number, string[]>();
+  for (const entry of r.levelization.entries) {
+    if (!byLevel.has(entry.level)) byLevel.set(entry.level, []);
+    byLevel.get(entry.level)!.push(entry.name);
   }
-  const layers: string[][] = [];
-  const layerOf = new Map<string, number>();
-  while (layerOf.size < r.modules.length) {
-    // next layer: everything whose dependencies are all already layered
-    const ready = r.modules
-      .filter((m) => !layerOf.has(m.name))
-      .filter((m) => [...deps.get(m.name)!].every((d) => layerOf.has(d)))
-      .map((m) => m.name);
-    if (ready.length === 0) return null; // defensive: should not happen without cycles
-    for (const n of ready) layerOf.set(n, layers.length);
-    layers.push(ready.sort());
-  }
-  return layers;
+  return [...byLevel.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, names]) => names.sort());
 }
 
 

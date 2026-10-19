@@ -1,5 +1,6 @@
 import { IrProject, IrEdge, IrNode } from '../ir.js';
 import type { FileCycle } from '../report/cycles.js';
+import type { Levelization } from '../report/levelization.js';
 import type { CoChangePair } from '../cochange.js';
 import { strengthOf } from './strength.js';
 import { localityOf } from './locality.js';
@@ -53,6 +54,8 @@ export interface ScanReport {
   edges: ScoredEdge[];
   /** file-level SCCs over resolved dependencies (computed by the scan pipeline) */
   cycles?: FileCycle[];
+  /** Lakos dependency-chain depth over the resolved file graph (scan pipeline) */
+  levelization?: Levelization;
   /** temporal co-change candidates from git history (optional, never gate-eligible) */
   coChange?: CoChangePair[];
 }

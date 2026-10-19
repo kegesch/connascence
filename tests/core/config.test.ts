@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { globMatch } from '../../src/core/scan.ts';
+import { globMatch } from '../../src/core/paths.ts';
 import { evaluateConfig, gateableEdges } from '../../src/core/config.ts';
 import { evaluateArchitecture } from '../../src/core/report/architecture.ts';
 import type { ScanReport } from '../../src/core/scoring/score.ts';

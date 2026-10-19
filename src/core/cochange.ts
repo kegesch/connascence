@@ -10,7 +10,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { globMatch } from './scan.js';
+import { globMatch } from './paths.js';
 
 export interface CommitChange {
   sha: string;

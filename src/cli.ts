@@ -18,6 +18,8 @@ import { diffScan } from './core/diff.js';
 import { resolveBaseRef } from './core/gitBase.js';
 import { readCoChange } from './core/cochange.js';
 import { renderCoChange } from './core/report/cochangeRender.js';
+import { renderLevelization } from './core/report/levelizationRender.js';
+import { scanJson } from './core/report/scanJson.js';
 import { renderDiff } from './cliDiff.js';
 import { typescriptBackend } from './languages/typescript/backend.js';
 
@@ -136,6 +138,11 @@ const rel = (p: string) => {
   return r.startsWith('..') ? p.replace(/\\/g, '/') : r || '.';
 };
 
+const printLevelization = (): void => {
+  const lines = renderLevelization(report.levelization, rel, 5);
+  if (lines.length > 0) console.log(`\n${lines.join('\n')}`);
+};
+
 if (command === 'explain') {
   if (!fileLine) usage();
   const hits = explain(report, path.resolve(fileLine));
@@ -168,6 +175,7 @@ if (format === 'summary') {
   // (strength/locality/degree/counts) stay out of the default view — --format=json has them
   if (shown.length === 0) {
     console.log(`OK: no coupling findings at severity >= ${minSeverity}.`);
+    printLevelization();
     for (const line of renderCoChange(report.coChange ?? [], rel, top)) console.log(line);
     process.exit(0);
   }
@@ -192,6 +200,7 @@ if (format === 'summary') {
     console.log('\nfix these files first (most coupling):');
     for (const h of hotspots) console.log(`  ${rel(h.filePath)}  (${h.edgeCount} edges)`);
   }
+  printLevelization();
   const cohesion = dirCohesion(edges).slice(0, 5);
   const relDir = (d: string) => toPosix(path.relative('.', d)) || '.';
   if (cohesion.length > 0) {
@@ -254,24 +263,10 @@ if (format === 'html') {
     console.log(sarif);
   }
 } else if (outFile) {
-  writeFileSync(
-    outFile,
-    JSON.stringify(
-      { summary: report.summary, cycles: report.cycles ?? [], coChange: report.coChange ?? [], edges },
-      null,
-      2,
-    ),
-    OUTPUT_ENCODING,
-  );
+  writeFileSync(outFile, scanJson(report, edges), OUTPUT_ENCODING);
   console.log(`wrote ${edges.length} edges to ${outFile}`);
 } else if (format === 'json') {
-  console.log(
-    JSON.stringify(
-      { summary: report.summary, cycles: report.cycles ?? [], coChange: report.coChange ?? [], edges },
-      null,
-      2,
-    ),
-  );
+  console.log(scanJson(report, edges));
 } else if (format === 'findings') {
   const findings = clusterFindings(edges, report.cycles ?? []);
   console.log(`clustered ${edges.length} edges into ${findings.length} findings:\n`);
@@ -287,6 +282,7 @@ if (format === 'html') {
   for (const h of fileHotspots(edges).slice(0, 12)) {
     console.log(`  ${String(h.edgeCount).padStart(4)} edges  max-degree ${String(h.maxDegree).padStart(3)}  ${rel(h.filePath)}`);
   }
+  printLevelization();
   for (const line of renderCoChange(report.coChange ?? [], rel, top)) console.log(line);
 } else {
   console.log('connascence scan summary');
@@ -310,6 +306,7 @@ if (format === 'html') {
   };
   printEdges('top confirmed edges', confirmed);
   printEdges('top candidates (heuristic — review before acting)', candidates);
+  printLevelization();
   for (const line of renderCoChange(report.coChange ?? [], rel, top)) console.log(line);
 }
 
