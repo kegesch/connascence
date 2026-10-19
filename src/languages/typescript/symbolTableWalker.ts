@@ -92,6 +92,15 @@ function isFunctionLike(node: Node): boolean {
   );
 }
 
+/** Parameters of callable declarations are positional; parameters of function
+ *  *types* (`(item: string) => string`) are contract descriptions, not slots of
+ *  the enclosing declaration. Treating them as slots widens the enclosing
+ *  signature and invents Position edges. */
+function isRuntimeParameter(node: Node): boolean {
+  const parent = node.getParent();
+  return parent !== undefined && isFunctionLike(parent);
+}
+
 /**
  * The IR definition that owns a node. Resolve the *nearest* function-like AST
  * ancestor rather than the nearest emitted definition: a callback's parameters
@@ -115,6 +124,8 @@ function enclosingOwner(node: Node, state: WalkState): string | undefined {
 
 function handleDefinition(node: Node, file: import('ts-morph').SourceFile, state: WalkState): boolean {
   if (!isDefinitionNode(node)) return false;
+  // function-type parameters are annotations, not positional slots
+  if (Node.isParameterDeclaration(node) && !isRuntimeParameter(node)) return true;
   const nameNode = node.getNameNode();
   if (!nameNode) return true;
   const defNode: IrNode = {

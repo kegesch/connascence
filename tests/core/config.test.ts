@@ -13,6 +13,12 @@ describe('globMatch', () => {
     expect(globMatch('**/*.test.ts', 'src/a/b.spec.ts')).toBe(false);
   });
 
+  it('lets **/ match zero directories (src/**/*.ts matches src/a.ts)', () => {
+    expect(globMatch('src/**/*.ts', 'src/a.ts')).toBe(true);
+    expect(globMatch('src/**/*.ts', 'src/core/a.ts')).toBe(true);
+    expect(globMatch('**/*.test.ts', 'a.test.ts')).toBe(true);
+  });
+
   it('normalizes backslashes', () => {
     expect(globMatch('**/*.test.ts', 'src\\a\\b.test.ts')).toBe(true);
   });

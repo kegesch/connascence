@@ -16,6 +16,8 @@ import { renderHtml } from './core/report/html.js';
 import { renderSarif } from './core/report/sarif.js';
 import { diffScan } from './core/diff.js';
 import { resolveBaseRef } from './core/gitBase.js';
+import { readCoChange } from './core/cochange.js';
+import { renderCoChange } from './core/report/cochangeRender.js';
 import { renderDiff } from './cliDiff.js';
 import { typescriptBackend } from './languages/typescript/backend.js';
 
@@ -30,6 +32,8 @@ function usage(): never {
   console.error('  --top=<n>              limit listed items (default 20, 0 = all)');
   console.error('  --format=summary|findings|architecture|json|html|sarif|agent  --out=<file> (JSON/HTML)');
   console.error('  --config=<file>        config file (default .connascence.yml if present)');
+  console.error('  --co-change=<n|off>    temporal co-change candidate threshold (default 3 shared commits)');
+  console.error('  --history=<n>          commits of git history to inspect (default 500)');
   console.error('       connascence explain <scan-glob...> -- <file>:<line>');
   console.error('       connascence diff <glob...> --repo=<path> [--base=<ref>] [--head=<ref>]');
   console.error('  (diff refs: --head omitted = working tree, --base omitted = merge-base with origin/HEAD/default; --format=agent = harness feedback)');
@@ -54,6 +58,8 @@ let repoPath: string | undefined;
 let baseRef: string | undefined;
 let headRef: string | undefined;
 let minSeverity: 'low' | 'medium' | 'high' = 'medium';
+let coChangeMin = 3;
+let historyDepth = 500;
 
 let v: string | undefined;
 for (let i = 1; i < args.length; i++) {
@@ -72,6 +78,8 @@ for (let i = 1; i < args.length; i++) {
   else if ((v = opt('base')) !== undefined) baseRef = v;
   else if ((v = opt('head')) !== undefined) headRef = v;
   else if ((v = opt('min-severity')) !== undefined) minSeverity = v as 'low' | 'medium' | 'high';
+  else if ((v = opt('co-change')) !== undefined) coChangeMin = v === 'off' ? 0 : Number(v);
+  else if ((v = opt('history')) !== undefined) historyDepth = Number(v);
   else if (!fileLine) patterns.push(arg);
 }
 if (patterns.length === 0) usage();
@@ -103,6 +111,14 @@ if (command === 'diff') {
 }
 
 const report = scan(patterns, config, typescriptBackend);
+if (command === 'scan' && coChangeMin > 0) {
+  report.coChange = readCoChange(process.cwd(), {
+    globs: patterns,
+    ignore: config.ignore,
+    minSupport: coChangeMin,
+    maxCommits: historyDepth,
+  });
+}
 
 let edges = filterHeuristics(report.edges, config);
 if (minStrength > 0) edges = edges.filter((e) => e.strength >= minStrength);
@@ -152,6 +168,7 @@ if (format === 'summary') {
   // (strength/locality/degree/counts) stay out of the default view — --format=json has them
   if (shown.length === 0) {
     console.log(`OK: no coupling findings at severity >= ${minSeverity}.`);
+    for (const line of renderCoChange(report.coChange ?? [], rel, top)) console.log(line);
     process.exit(0);
   }
   for (const sev of ['high', 'medium', 'low'] as const) {
@@ -196,6 +213,7 @@ if (format === 'summary') {
       );
     }
   }
+  for (const line of renderCoChange(report.coChange ?? [], rel, top)) console.log(line);
   process.exit(0);
 }
 
@@ -223,7 +241,12 @@ if (format === 'html') {
     process.stdout.write(html);
   }
 } else if (format === 'sarif') {
-  const sarif = renderSarif({ edges, repoRoot: path.resolve('.'), cycles: report.cycles ?? [] });
+  const sarif = renderSarif({
+    edges,
+    repoRoot: path.resolve('.'),
+    cycles: report.cycles ?? [],
+    coChange: report.coChange ?? [],
+  });
   if (outFile) {
     writeFileSync(outFile, sarif, OUTPUT_ENCODING);
     console.log(`wrote SARIF report to ${outFile}`);
@@ -233,12 +256,22 @@ if (format === 'html') {
 } else if (outFile) {
   writeFileSync(
     outFile,
-    JSON.stringify({ summary: report.summary, cycles: report.cycles ?? [], edges }, null, 2),
+    JSON.stringify(
+      { summary: report.summary, cycles: report.cycles ?? [], coChange: report.coChange ?? [], edges },
+      null,
+      2,
+    ),
     OUTPUT_ENCODING,
   );
   console.log(`wrote ${edges.length} edges to ${outFile}`);
 } else if (format === 'json') {
-  console.log(JSON.stringify({ summary: report.summary, cycles: report.cycles ?? [], edges }, null, 2));
+  console.log(
+    JSON.stringify(
+      { summary: report.summary, cycles: report.cycles ?? [], coChange: report.coChange ?? [], edges },
+      null,
+      2,
+    ),
+  );
 } else if (format === 'findings') {
   const findings = clusterFindings(edges, report.cycles ?? []);
   console.log(`clustered ${edges.length} edges into ${findings.length} findings:\n`);
@@ -254,6 +287,7 @@ if (format === 'html') {
   for (const h of fileHotspots(edges).slice(0, 12)) {
     console.log(`  ${String(h.edgeCount).padStart(4)} edges  max-degree ${String(h.maxDegree).padStart(3)}  ${rel(h.filePath)}`);
   }
+  for (const line of renderCoChange(report.coChange ?? [], rel, top)) console.log(line);
 } else {
   console.log('connascence scan summary');
   for (const [type, count] of Object.entries(report.summary)) {
@@ -276,6 +310,7 @@ if (format === 'html') {
   };
   printEdges('top confirmed edges', confirmed);
   printEdges('top candidates (heuristic — review before acting)', candidates);
+  for (const line of renderCoChange(report.coChange ?? [], rel, top)) console.log(line);
 }
 
 const violations = evaluateConfig(report, config);

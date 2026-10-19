@@ -39,14 +39,16 @@ describe('renderSarif', () => {
     expect(loc2.artifactLocation.uri).toBe('lib/b.ts');
   });
 
-  it('declares one rule per connascence type plus cycle, with heuristic flags', () => {
+  it('declares one rule per connascence type plus cycle and co-change, with heuristic flags', () => {
     const rules = sarif.runs[0].tool.driver.rules;
-    expect(rules).toHaveLength(10);
+    expect(rules).toHaveLength(11);
     const meaning = rules.find((r: { id: string }) => r.id === 'meaning');
     expect(meaning.properties.heuristic).toBe(true);
     const position = rules.find((r: { id: string }) => r.id === 'position');
     expect(position.properties.heuristic).toBe(false);
     expect(rules.some((r: { id: string }) => r.id === 'cycle')).toBe(true);
+    const coChange = rules.find((r: { id: string }) => r.id === 'co-change');
+    expect(coChange.properties.heuristic).toBe(true);
   });
 
   it('emits cycle results with every member location', () => {
@@ -65,6 +67,21 @@ describe('renderSarif', () => {
     expect(result.level).toBe('error');
     expect(result.locations).toHaveLength(2);
     expect(result.locations[1].physicalLocation.artifactLocation.uri).toBe('src/b.ts');
+  });
+
+  it('emits co-change candidates as notes, never errors', () => {
+    const parsed = JSON.parse(
+      renderSarif({
+        edges: [],
+        repoRoot: 'C:/repo',
+        coChange: [{ a: 'src/a.ts', b: 'src/b.ts', support: 4, ratio: 0.8, last: 'abcdef123456' }],
+      }),
+    );
+    const result = parsed.runs[0].results[0];
+    expect(result.ruleId).toBe('co-change');
+    expect(result.level).toBe('note');
+    expect(result.message.text).toContain('candidate');
+    expect(result.locations).toHaveLength(2);
   });
 
   it('escapes nothing manually — JSON.stringify handles content safely', () => {

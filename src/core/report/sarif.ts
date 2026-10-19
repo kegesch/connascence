@@ -2,6 +2,7 @@ import { ScoredEdge } from '../scoring/score.js';
 import { CONNASCENCE_TYPES, HEURISTIC_TYPES } from '../scoring/score.js';
 import { toPosix } from '../paths.js';
 import type { FileCycle } from './cycles.js';
+import type { CoChangePair } from '../cochange.js';
 
 interface SarifRule {
   id: string;
@@ -61,6 +62,23 @@ function edgeResults(edges: ScoredEdge[], repoRoot: string) {
   }));
 }
 
+function coChangeResults(pairs: CoChangePair[], repoRoot: string) {
+  return pairs.map((p) => ({
+    ruleId: 'co-change',
+    level: 'note' as const,
+    message: {
+      text: `temporal co-change candidate: changed together in ${p.support} commits (confidence ${p.ratio.toFixed(2)}, last ${p.last.slice(0, 8)}); review, never gated`,
+    },
+    locations: [p.a, p.b].map((file) => ({
+      physicalLocation: {
+        artifactLocation: { uri: relUri(repoRoot, file) },
+        region: { startLine: 1 },
+      },
+    })),
+    partialFingerprints: { coChange: `${relUri(repoRoot, p.a)}|${relUri(repoRoot, p.b)}` },
+  }));
+}
+
 function cycleResults(cycles: FileCycle[], repoRoot: string) {
   return cycles.map((c) => ({
     ruleId: 'cycle',
@@ -82,6 +100,7 @@ export interface SarifOptions {
   edges: ScoredEdge[];
   repoRoot: string;
   cycles?: FileCycle[];
+  coChange?: CoChangePair[];
   toolVersion?: string;
 }
 
@@ -90,7 +109,7 @@ export interface SarifOptions {
  * GitHub code scanning, Azure DevOps, ESLint/Sarif viewers, etc.
  * One rule per connascence type plus cycle (SCC); one result per edge/cycle.
  */
-export function renderSarif({ edges, repoRoot, cycles = [], toolVersion = '0.1.0' }: SarifOptions): string {
+export function renderSarif({ edges, repoRoot, cycles = [], coChange = [], toolVersion = '0.1.0' }: SarifOptions): string {
   const rules: SarifRule[] = [
     ...connascenceRules(),
     // not a connascence type: strength 0 keeps the rule shape uniform
@@ -100,8 +119,18 @@ export function renderSarif({ edges, repoRoot, cycles = [], toolVersion = '0.1.0
       helpUri: 'https://connascence.io/algorithm',
       properties: { heuristic: false, strength: 0 },
     },
+    {
+      id: 'co-change',
+      shortDescription: { text: 'Temporal co-change (candidate)' },
+      helpUri: 'https://connascence.io/algorithm',
+      properties: { heuristic: true, strength: 0 },
+    },
   ];
-  const results = [...edgeResults(edges, repoRoot), ...cycleResults(cycles, repoRoot)];
+  const results = [
+    ...edgeResults(edges, repoRoot),
+    ...cycleResults(cycles, repoRoot),
+    ...coChangeResults(coChange, repoRoot),
+  ];
 
   return JSON.stringify(
     {

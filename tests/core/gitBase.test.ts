@@ -54,7 +54,7 @@ beforeAll(() => {
   mainTip = commit(repo, 'main advances');
   git(repo, 'push', 'origin', 'main');
   git(repo, 'checkout', 'feature');
-});
+}, 60000);
 
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });

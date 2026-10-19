@@ -489,9 +489,45 @@ Final dogfood: `scan src/**/*.ts` = 995 edges, **0 actionable, 0 cycles**; the
 diff gate exits 0 on name/heuristic-only changes and 1 on a newly closed cycle
 (verified end-to-end on a temporary repo). 217 tests green.
 
-**Next iteration:** M3a temporal co-change channel — walk `git log` for
-file pairs that change together, emit them as heuristic candidates (never
-gate-eligible), and wire them into `scan`/JSON/SARIF with fixtures. This is the
-channel that catches semantic evasion (event buses, DI, string-keyed
-indirection) static edges cannot see.
+### Iteration 5 — 2026-10-19: temporal co-change channel (candidates only)
+
+- `src/core/cochange.ts` splits a pure pipeline (`parseGitLog` →
+  `filterCommits` → `coChangePairs`) from one bounded git adapter
+  (`readCoChange`). Defaults: 500 commits, no merges, skip commits touching
+  >25 files (format/lint/rename noise), min support 3, min confidence 0.5.
+- Confidence is `support / min(changes(a), changes(b))`: the probability that
+  changing the rarer file drags the other. Solo commits count toward the
+  denominator (a file that often changes alone is weak evidence). Ordering is
+  confidence → support → paths; `last` is the newest shared commit.
+- History paths that no longer exist are dropped: a rename otherwise leaves a
+  ghost path (`src/core/cli.ts`) looking permanently coupled to its successors.
+  Rename-following is future work; not showing stale paths is not.
+- Wired as a clearly-labelled candidate channel, never a connascence type:
+  `ScanReport.coChange`, JSON `coChange`, SARIF rule `co-change` (level
+  `note`, `heuristic: true`), and a separate section in summary/findings/agent
+  output. `--co-change=<n|off>` and `--history=<n>` tune it. It does not enter
+  `clusterFindings` and cannot gate; `diff` leaves it out because materialized
+  refs have no history and candidates never gate anyway.
+- **`globMatch` bug exposed by the channel**: `**/` required at least one
+  directory, so `src/**/*.ts` did not match `src/cli.ts`. It now matches zero or
+  more directories (git/ts-morph semantics), with fixtures.
+- **Position precision bug exposed by the channel's renderer**: a parameter of
+  a function *type* (`transform: (item: string) => string`) was attributed to
+  the enclosing function, widening `renderCoChange` to four slots. `isRuntimeParameter`
+  keeps type-signature parameters out of the positional graph; fixture added.
+
+Dogfood: the new channel's first run listed `src/core/cli.ts` pairs from before
+that file moved to `src/cli.ts`; existence filtering removed them. The scanner
+then found 9 Position false positives from the function-type parameter, fixed
+above. Remaining pairs (`ir.ts` ↔ `symbolTable.ts`, `cli.ts` ↔ `diff.ts`,
+`config.ts` ↔ `diff.ts`) are the intended contract/wiring co-evolution, not
+refactor targets — co-change is a review prompt, not an accusation.
+
+Final dogfood: `scan src/**/*.ts` = 1084 edges, **0 actionable, 0 cycles, 6
+co-change candidates**; summary shows the candidate section even when there are
+no connascence findings. 231 tests green.
+
+**Next iteration:** M3a Lakos levelization — dependency-chain depth per module
+(not Ousterhout depth), deterministic and reportable in architecture/JSON, with
+fixtures. Then `.yml` config, and only then M3b scoring.
 

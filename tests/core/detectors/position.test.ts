@@ -60,4 +60,11 @@ describe('detectPosition', () => {
     const { project: nested } = analyze(['tests/fixtures/position/nested-callback.ts']);
     expect(detectPosition(nested)).toHaveLength(0);
   });
+
+  it('does not count function-type parameters as positional slots', () => {
+    // `applyAll` has three slots; the `item` inside `(item: string) => string`
+    // is a type annotation. Before the fix it looked 4-wide.
+    const { project: typed } = analyze(['tests/fixtures/position/function-type-param.ts']);
+    expect(detectPosition(typed)).toHaveLength(0);
+  });
 });

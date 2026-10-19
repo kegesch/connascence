@@ -1,5 +1,6 @@
 import { IrProject, IrEdge, IrNode } from '../ir.js';
 import type { FileCycle } from '../report/cycles.js';
+import type { CoChangePair } from '../cochange.js';
 import { strengthOf } from './strength.js';
 import { localityOf } from './locality.js';
 import { degreeMap, degreeOf } from './degree.js';
@@ -52,6 +53,8 @@ export interface ScanReport {
   edges: ScoredEdge[];
   /** file-level SCCs over resolved dependencies (computed by the scan pipeline) */
   cycles?: FileCycle[];
+  /** temporal co-change candidates from git history (optional, never gate-eligible) */
+  coChange?: CoChangePair[];
 }
 
 export function scoreProject(project: IrProject): ScanReport {

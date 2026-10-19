@@ -15,10 +15,14 @@ export function globMatch(pattern: string, pathValue: string): boolean {
     '^' +
       pattern
         .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        // `**/` matches zero or more directories, so src/**/*.ts also matches
+        // src/a.ts (git and ts-morph glob semantics, not shell globbing)
+        .replace(/\*\*\//g, '\u0001')
         .replace(/\*\*/g, '\u0000')
         .replace(/\*/g, '[^/]*')
         .replace(/\?/g, '.')
-        .replace(/\u0000/g, '.*') +
+        .replace(/\u0000/g, '.*')
+        .replace(/\u0001/g, '(?:.*/)?') +
       '$',
   );
   return re.test(pathValue.replace(/\\/g, '/'));
