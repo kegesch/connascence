@@ -145,7 +145,7 @@ const rel = (p: string) => {
 };
 
 const printGraph = (): void => {
-  const lines = graphSectionLines(report.levelization, report.pressure, rel);
+  const lines = graphSectionLines({ levelization: report.levelization, pressure: report.pressure, quality: report.quality, rel });
   if (lines.length > 0) console.log(`\n${lines.join('\n')}`);
 };
 

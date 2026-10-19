@@ -8,6 +8,7 @@ export function scanJson(report: ScanReport, edges: ScoredEdge[]): string {
     {
       summary: report.summary,
       pressure: report.pressure ?? null,
+      quality: report.quality ?? null,
       cycles: report.cycles ?? [],
       levelization: report.levelization ?? null,
       coChange: report.coChange ?? [],

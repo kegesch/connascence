@@ -27,14 +27,25 @@ export interface EngineEdge {
   strength: number;
   locality: number;
   degree: number;
+  pressure?: number;
   evidence: string;
   heuristic: boolean;
+}
+
+/** Seven-axis score (M3b) carried by the engine JSON. */
+export interface EngineQuality {
+  scoreVersion: number;
+  configHash: string;
+  score: number;
+  components: { key: string; value: number; detail: string }[];
 }
 
 /** The engine CLI `scan --format=json` output. */
 export interface EngineScan {
   summary: Record<string, number>;
   edges: EngineEdge[];
+  /** absent on engine builds before M3b */
+  quality?: EngineQuality;
 }
 
 export interface ScanRequest {

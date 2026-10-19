@@ -5,11 +5,13 @@ import { detectMeaning } from './detectors/meaning.js';
 import { detectIdentity } from './detectors/identity.js';
 import { detectValue } from './detectors/value.js';
 import { scoreProject, ScanReport } from './scoring/score.js';
+import { qualityScore } from './scoring/quality.js';
 import { findFileCycles } from './report/cycles.js';
 import { fileLevelization } from './report/levelization.js';
 import { globMatch } from './paths.js';
 import { IrProject } from './ir.js';
 import { SemanticAdapter } from './adapter.js';
+import { configHash, type ConnascenceConfig } from './config.js';
 
 /** Drop IR nodes belonging to ignored files (edges referencing them fall away in detectors). */
 export function applyIgnores(project: IrProject, ignore: string[] | undefined): void {
@@ -42,7 +44,7 @@ export interface ScanBackend {
  */
 export function scan(
   files: string[],
-  config: { ignore?: string[] } = {},
+  config: ConnascenceConfig = {},
   backend: ScanBackend,
 ): ScanReport {
   const { project, refIdToDefId, adapter } = backend.build(files);
@@ -68,5 +70,6 @@ export function scan(
   // graph-level analyses are computed after scoring: they need resolved edges
   report.cycles = findFileCycles(report.edges);
   report.levelization = fileLevelization(report.edges);
+  report.quality = qualityScore(report, configHash(config));
   return report;
 }

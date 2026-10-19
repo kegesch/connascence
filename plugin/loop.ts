@@ -16,10 +16,12 @@ import {
   createState,
   ensureBaseline,
   freshAdded,
+  isStaleBaseline,
   markReported,
   sessionSummary,
 } from './sensor.js';
 import { BaselineStore, clearBaseline, loadBaseline, saveBaseline } from './baseline.js';
+import { invalidateBaseline } from './rebaseline.js';
 import { SensorOptions } from './options.js';
 
 type Ctx = Parameters<Parameters<typeof Plugin.define>[0]['setup']>[0];
@@ -43,6 +45,7 @@ export interface Runtime {
   peek(sessionID: string): SensorState | undefined;
   scanOnce(): Promise<EngineScan>;
   baselineFor(sessionID: string, state: SensorState): Promise<Baseline>;
+  rebaseline(sessionID: string, state: SensorState, scan: EngineScan): Promise<Baseline>;
   forget(sessionID: string): Promise<void>;
   log(event: Record<string, unknown>): Promise<void>;
 }
@@ -94,6 +97,11 @@ function createRuntime(opts: LoopOptions, store: BaselineStore): Runtime {
     peek: (id: string) => sessions.get(id),
     scanOnce,
     baselineFor,
+    rebaseline: (id, state, scan) =>
+      invalidateBaseline(id, state, scan, {
+        persist: (b) => persist(store, id, b),
+        log: (event) => optsLog(opts, event),
+      }),
     forget: async (sessionID: string) => {
       sessions.delete(sessionID);
       await clear(store, sessionID);
@@ -151,6 +159,11 @@ async function runTurnDiff(
   try {
     const before = await rt.baselineFor(sessionID, state);
     const after = await rt.scanOnce();
+    if (isStaleBaseline(before, after)) {
+      await rt.rebaseline(sessionID, state, after);
+      await rt.log({ event: 'turn', sessionID, newEdges: 0, fresh: 0, injected: false, staleBaseline: true });
+      return;
+    }
     const added = diffAdded(before.keys, after.edges);
     const fresh = freshAdded(state, added.filter((e) => isReportable(e, opts.includeHeuristics)));
     if (!opts.inject || fresh.length === 0) {

@@ -3,6 +3,7 @@ import { strengthOf } from '../../../src/core/scoring/strength.ts';
 import { localityOf } from '../../../src/core/scoring/locality.ts';
 import { degreeMap } from '../../../src/core/scoring/degree.ts';
 import { pressureOf } from '../../../src/core/scoring/pressure.ts';
+import { projectStats } from '../../../src/core/scoring/stats.ts';
 import { scoreProject } from '../../../src/core/scoring/score.ts';
 import { severityOf } from '../../../src/core/report/severity.ts';
 import type { ScoredEdge } from '../../../src/core/scoring/score.ts';
@@ -95,6 +96,26 @@ describe('degree', () => {
     expect(name.degree).toBe(1);
     expect(report.pressure?.total).toBeGreaterThan(0);
     expect(report.pressure?.byType.identity).toBeGreaterThan(0);
+  });
+});
+
+describe('projectStats', () => {
+  it('counts behavior definitions per file and duplicate structural hashes', () => {
+    const a = node([{ kind: 'function', name: 'a' }, modA], 'a');
+    const b = node([{ kind: 'function', name: 'b' }, modB], 'b');
+    const c = node([{ kind: 'class', name: 'C' }, modB], 'c');
+    const d = node([{ kind: 'variable', name: 'VALUE' }, modA], 'd');
+    const stats = projectStats([
+      { ...a, structureHash: 'same' },
+      { ...b, structureHash: 'same' },
+      { ...c, structureHash: 'unique' },
+      { ...d, kind: 'variable' },
+    ]);
+    expect(stats.files).toEqual(['a.ts', 'b.ts']);
+    expect(stats.definitionsByFile).toEqual({ 'a.ts': 1, 'b.ts': 2 });
+    expect(stats.definitions).toBe(3);
+    expect(stats.hashableDefinitions).toBe(3);
+    expect(stats.duplicateDefinitions).toBe(1);
   });
 });
 

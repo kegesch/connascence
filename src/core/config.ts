@@ -1,5 +1,6 @@
 import { parse } from 'yaml';
 import { readFileSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { ConnascenceType } from './ir.js';
 import { HEURISTIC_TYPES, type ScanReport } from './scoring/score.js';
 import { strengthOf } from './scoring/strength.js';
@@ -42,6 +43,21 @@ export interface ConnascenceConfig {
     /** mass edits touching more files than this are skipped (default 25) */
     maxFilesPerCommit?: number;
   };
+}
+
+/** Stable hash of the effective config: key order does not change it. */
+export function configHash(config: ConnascenceConfig): string {
+  const stable = (value: unknown): string => {
+    if (value === undefined) return 'null';
+    if (value === null || typeof value !== 'object') return JSON.stringify(value);
+    if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record)
+      .filter((key) => record[key] !== undefined)
+      .sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${stable(record[key])}`).join(',')}}`;
+  };
+  return createHash('sha256').update(stable(config)).digest('hex').slice(0, 16);
 }
 
 export function loadConfig(path = '.connascence.yml', required = false): ConnascenceConfig {

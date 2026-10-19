@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { globMatch } from '../../src/core/paths.ts';
-import { coChangeOptions, evaluateConfig, gateableEdges } from '../../src/core/config.ts';
+import { coChangeOptions, configHash, evaluateConfig, gateableEdges } from '../../src/core/config.ts';
 import { evaluateArchitecture } from '../../src/core/report/architecture.ts';
 import type { ScanReport } from '../../src/core/scoring/score.ts';
 
@@ -129,5 +129,20 @@ describe('coChangeOptions', () => {
 
   it('lets an explicit threshold re-enable a disabled config', () => {
     expect(coChangeOptions({ coChange: { enabled: false } }, { minSupport: 3 })?.minSupport).toBe(3);
+  });
+});
+
+describe('configHash', () => {
+  it('is independent of key order and undefined fields', () => {
+    expect(configHash({ thresholds: { name: 1, position: 2 } })).toBe(
+      configHash({ thresholds: { position: 2, name: 1 } }),
+    );
+    expect(configHash({ ignore: ['a'], coChange: undefined })).toBe(configHash({ ignore: ['a'] }));
+  });
+
+  it('changes when any effective value changes', () => {
+    const base = configHash({ thresholds: { name: 1 }, gate: { minStrength: 7, minLocality: 4 } });
+    const changed = configHash({ thresholds: { name: 2 }, gate: { minStrength: 7, minLocality: 4 } });
+    expect(changed).not.toBe(base);
   });
 });

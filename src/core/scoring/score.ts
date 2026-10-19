@@ -6,8 +6,11 @@ import { strengthOf } from './strength.js';
 import { localityOf } from './locality.js';
 import { degreeByType, degreeOf } from './degree.js';
 import { pressureOf, pressureSummary, type PressureSummary } from './pressure.js';
+import { projectStats, type ProjectStats } from './stats.js';
+import type { QualityScore } from './quality.js';
 
 export type { PressureSummary } from './pressure.js';
+export type { ProjectStats } from './stats.js';
 
 /** Detectors that produce candidates rather than certainties. */
 export const HEURISTIC_TYPES: ReadonlySet<string> = new Set(['meaning', 'value', 'identity']);
@@ -53,6 +56,10 @@ export interface ScanReport {
   levelization?: Levelization;
   /** temporal co-change candidates from git history (optional, never gate-eligible) */
   coChange?: CoChangePair[];
+  /** IR-derived file/definition statistics used by the score axes */
+  stats?: ProjectStats;
+  /** seven-axis quality score, attached by the scan pipeline */
+  quality?: QualityScore;
 }
 
 export function scoreProject(project: IrProject): ScanReport {
@@ -111,5 +118,5 @@ export function scoreProject(project: IrProject): ScanReport {
     summary[edge.connascenceType] = (summary[edge.connascenceType] ?? 0) + 1;
   }
 
-  return { summary, pressure: pressureSummary(edges), edges };
+  return { summary, pressure: pressureSummary(edges), stats: projectStats(project.nodes), edges };
 }

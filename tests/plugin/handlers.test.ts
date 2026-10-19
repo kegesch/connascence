@@ -4,9 +4,9 @@
 // so no engine is spawned.
 import { describe, it, expect } from 'vitest';
 import { Deliver, LoopOptions, Runtime, createHandlers } from '../../plugin/loop.ts';
-import { SensorState, createState } from '../../plugin/sensor.ts';
+import { Baseline, SensorState, createState } from '../../plugin/sensor.ts';
 import { parseOptions } from '../../plugin/options.ts';
-import type { EngineEdge, EngineScan } from '../../plugin/engine.ts';
+import type { EngineEdge, EngineQuality, EngineScan } from '../../plugin/engine.ts';
 
 function edge(overrides: Partial<EngineEdge> = {}): EngineEdge {
   return {
@@ -45,6 +45,8 @@ function harness(
   edges: EngineEdge[] | Error,
   overrides: Partial<LoopOptions> = {},
   state: SensorState = createState(),
+  scanQuality?: EngineQuality,
+  baseline: Baseline = { at: '2026-10-19T00:00:00.000Z', count: 0, keys: [] },
 ): Harness {
   const events: Record<string, unknown>[] = [];
   const delivered: string[] = [];
@@ -54,9 +56,13 @@ function harness(
     peek: () => state,
     scanOnce: async () => {
       if (edges instanceof Error) throw edges;
-      return { ...scan, edges };
+      return { ...scan, edges, quality: scanQuality };
     },
-    baselineFor: async () => ({ at: '2026-10-19T00:00:00.000Z', count: 0, keys: [] }),
+    baselineFor: async () => baseline,
+    rebaseline: async (sessionID, _state, after) => {
+      events.push({ event: 'baseline_invalidated', sessionID, edges: after.edges.length });
+      return { at: baseline.at, count: after.edges.length, keys: [], scoreVersion: after.quality?.scoreVersion, configHash: after.quality?.configHash };
+    },
     forget: async () => undefined,
     log: async (e) => {
       events.push(e);
@@ -82,6 +88,20 @@ describe('turn handler', () => {
       count: 1,
       chars: expect.any(Number),
     });
+  });
+
+  it('rebaselines instead of diffing when the score formula/config changed', async () => {
+    const h = harness(
+      [],
+      {},
+      createState(),
+      { scoreVersion: 2, configHash: 'config-b', score: 5000, components: [] },
+      { at: '2026-10-19T00:00:00.000Z', count: 0, keys: [], scoreVersion: 1, configHash: 'config-a' },
+    );
+    await h.handle(stepEnded('stop'));
+    expect(h.events).toContainEqual(expect.objectContaining({ event: 'baseline_invalidated' }));
+    expect(h.events).toContainEqual(expect.objectContaining({ event: 'turn', staleBaseline: true }));
+    expect(h.delivered).toHaveLength(0);
   });
 
   it('does nothing mid-turn (a step that asks for tools continues the turn)', async () => {

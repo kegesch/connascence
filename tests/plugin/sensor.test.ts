@@ -1,14 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import {
   adoptBaseline,
+  baselineFromScan,
   createState,
   ensureBaseline,
   freshAdded,
+  isStaleBaseline,
   markReported,
   sessionSummary,
 } from '../../plugin/sensor.ts';
 import { parseOptions } from '../../plugin/options.ts';
-import type { EngineEdge, EngineScan } from '../../plugin/engine.ts';
+import type { EngineEdge, EngineQuality, EngineScan } from '../../plugin/engine.ts';
 
 function edge(name: string): EngineEdge {
   return {
@@ -23,8 +25,18 @@ function edge(name: string): EngineEdge {
   };
 }
 
-function scan(edges: EngineEdge[]): EngineScan {
-  return { summary: { position: edges.length }, edges };
+function quality(over: Partial<EngineQuality> = {}): EngineQuality {
+  return {
+    scoreVersion: 1,
+    configHash: 'config-a',
+    score: 5000,
+    components: [],
+    ...over,
+  };
+}
+
+function scan(edges: EngineEdge[], q?: EngineQuality): EngineScan {
+  return { summary: { position: edges.length }, edges, quality: q };
 }
 
 describe('ensureBaseline', () => {
@@ -45,6 +57,25 @@ describe('ensureBaseline', () => {
     const { baseline } = ensureBaseline(state, scan([edge('0')]));
     // this fixture edge carries no identityHash, so the fallback key applies
     expect(baseline.keys).toEqual([expect.stringContaining('position|p:src/a.ts:0|p:src/b.ts:host')]);
+  });
+
+  it('stamps score version and config hash on the baseline', () => {
+    const { baseline } = ensureBaseline(createState(), scan([edge('0')], quality({ score: 6200 })));
+    expect(baseline).toMatchObject({ scoreVersion: 1, configHash: 'config-a', score: 6200 });
+  });
+});
+
+describe('isStaleBaseline', () => {
+  it('rejects a baseline from a different formula or config', () => {
+    const baseline = baselineFromScan(scan([], quality()));
+    expect(isStaleBaseline(baseline, scan([], quality()))).toBe(false);
+    expect(isStaleBaseline(baseline, scan([], quality({ scoreVersion: 2 })))).toBe(true);
+    expect(isStaleBaseline(baseline, scan([], quality({ configHash: 'config-b' })))).toBe(true);
+  });
+
+  it('does not invalidate when an older engine emits no score', () => {
+    const baseline = baselineFromScan(scan([]));
+    expect(isStaleBaseline(baseline, scan([]))).toBe(false);
   });
 });
 

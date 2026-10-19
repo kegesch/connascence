@@ -16,6 +16,9 @@ export interface BaselineRecord {
   count: number;
   /** edge keys, used to diff later scans */
   keys: string[];
+  /** formula version and config hash: changed values invalidate the baseline */
+  scoreVersion?: number;
+  configHash?: string;
 }
 
 /** The subset of ctx.storage the plugin needs (fake-able in fixtures). */
@@ -47,7 +50,9 @@ export function isBaselineRecord(value: unknown): value is BaselineRecord {
     v.count >= 0 &&
     Array.isArray(v.keys) &&
     v.keys.every((k) => typeof k === 'string') &&
-    v.count === v.keys.length
+    v.count === v.keys.length &&
+    (v.scoreVersion === undefined || typeof v.scoreVersion === 'number') &&
+    (v.configHash === undefined || typeof v.configHash === 'string')
   );
 }
 

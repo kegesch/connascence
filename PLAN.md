@@ -625,9 +625,43 @@ modules; both were real:
 After both, the scan reports **no split candidates**; `diff --base=HEAD` exits
 0. 273 tests green; build, lint, and plugin typecheck clean.
 
-**Next iteration:** M3b.2 full score vector — acyclicity, levelization,
-equality (gini + level term), redundancy, cohesion (Louvain Q), encapsulation
-v1, and coupling pressure, combined by geometric mean into a 0..10000 score
-with `scoreVersion` + config hash in JSON and plugin baselines. Then revisit the
-plugin payload against the scored vector.
+### Iteration 9 — 2026-10-19: M3b.2 seven-axis quality score
+
+- `scoring/stats.ts` projects the IR into per-file behavior definitions and
+  structural-hash clone groups, so equality/redundancy use IR facts rather than
+  edge counts.
+- `scoring/quality.ts` computes seven normalized axes and one geometric mean:
+  - acyclicity: 1 with no resolved cycle, 0 otherwise;
+  - levelization: `1 - (depth-1)/(components-1)` (worst-chain normalized);
+  - equality: `(1 - gini(defs/file)) × 1/(1 + meanDefs/10)`; the level term
+    prevents a uniformly huge repo from scoring perfect equality;
+  - redundancy: `1 - duplicate/hashable` structural definitions (duplicate v1;
+    dead-code detection is still open);
+  - cohesion: share of dependency mass inside Louvain communities (one dense
+    community = 1; Q is reported in the detail);
+  - encapsulation v1: private internal targets ÷ `(1 + exported interface
+    strength)`, excluding public/absorbed targets and not counting outgoing
+    dependencies as interface width;
+  - coupling: `1 - worst-decile pressure`, so weak name imports cannot dilute a
+    few severe edges.
+- `quality.score` is `round(10000 × geometricMean(axes))`, with
+  `scoreVersion = 1`. Zero on any axis tanks the scalar by design.
+- `configHash` is a stable SHA-256 over the effective config (sorted keys,
+  undefined fields ignored). `scan` attaches `quality` to JSON; baselines store
+  `scoreVersion` + `configHash`, and `runTurnDiff` replaces a stale baseline and
+  logs `baseline_invalidated` instead of diffing incomparable scans.
+
+Dogfood: the new `graphSectionLines` call was a true position finding
+(four positional parameters). It now takes one options object; the warning is
+gone and `diff --base=HEAD` exits 0. Current score on this repo is **5579**
+(acyclicity 1.00, levelization 0.89, encapsulation 0.43, equality 0.38,
+redundancy 0.99, cohesion 0.60, coupling 0.20) over 1267 edges, 0 cycles, depth
+6/48. Changing the config (`heuristicFindings`/co-change) changes the hash
+(`44136fa…` → `516aeea…`) while the score stays comparable within a stamp.
+291 tests green; build, lint, and plugin typecheck clean.
+
+**Next iteration:** M4 feedback payload spec — consume the scored vector in the
+plugin, name the worst axis/file/edge, and keep the payload bounded and
+candidate-aware. Calibration of the axes (especially encapsulation) remains the
+M7 stop-or-pivot gate.
 

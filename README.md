@@ -10,10 +10,10 @@ Lineage: coupling = cost of edges, cohesion = strength of the interior,
 encapsulation = economy of the boundary (Stevens/Myers/Constantine '74, Parnas
 '72, Ousterhout '18).
 
-**Status: M0** — per [PLAN.md](PLAN.md), the archived engine
-(`archive/pre-restart-2026-10-13`) is used as-is, wired into an opencode
-plugin, to answer the riskiest assumption first: *do agents act on the
-signal?* No engine rewrite starts before that is answered.
+**Status: M0 loop + M3a/M3b engine** — per [PLAN.md](PLAN.md), the archived
+engine (`archive/pre-restart-2026-10-13`) is wired into an opencode plugin to
+answer the riskiest assumption first: *do agents act on the signal?* The
+structural score (seven root-cause axes) is now reported alongside that loop.
 
 ## Repo layout
 
@@ -49,6 +49,13 @@ architecture), and temporal co-change candidates from git history
 Findings and file hotspots are ranked by continuous coupling pressure
 (strength × locality × same-type breadth), not a raw edge count; `--format=json`
 includes per-edge `pressure` and an aggregate `pressure` summary.
+
+Every scan also emits a seven-axis `quality` object: acyclicity, levelization,
+encapsulation (v1), equality (gini + level term), redundancy, cohesion (Louvain
+communities, internal edge mass), and coupling (worst-decile pressure), combined
+by geometric mean into a 0–10000 score. It carries `scoreVersion` and a stable
+config hash; plugin baselines with a different stamp are replaced instead of
+being diffed against incomparable numbers.
 
 ## opencode plugin (the M0 loop)
 

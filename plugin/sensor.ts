@@ -16,6 +16,10 @@ export interface Baseline {
   count: number;
   /** edge keys — set membership is all a later scan diff needs */
   keys: string[];
+  /** score formula/config stamp; a mismatch means the baseline is not comparable */
+  scoreVersion?: number;
+  configHash?: string;
+  score?: number;
 }
 
 export interface SensorState {
@@ -34,7 +38,34 @@ export function createState(): SensorState {
 }
 
 export function baselineFromScan(scan: EngineScan, at = new Date().toISOString()): Baseline {
-  return { at, count: scan.edges.length, keys: scan.edges.map(edgeKey) };
+  const quality = scan.quality;
+  return {
+    at,
+    count: scan.edges.length,
+    keys: scan.edges.map(edgeKey),
+    scoreVersion: quality?.scoreVersion,
+    configHash: quality?.configHash,
+    score: quality?.score,
+  };
+}
+
+/** A formula or config change makes the persisted baseline incomparable. */
+export function isStaleBaseline(baseline: Baseline, scan: EngineScan): boolean {
+  const quality = scan.quality;
+  if (!quality) return false;
+  return baseline.scoreVersion !== quality.scoreVersion || baseline.configHash !== quality.configHash;
+}
+
+/** Replace the session baseline after an invalidating score/config change. */
+export async function replaceBaseline(
+  state: SensorState,
+  scan: EngineScan,
+  persist: (baseline: Baseline) => Promise<void>,
+): Promise<Baseline> {
+  const baseline = baselineFromScan(scan);
+  state.baseline = baseline;
+  await persist(baseline);
+  return baseline;
 }
 
 /** Store the baseline scan; first write wins. */
@@ -73,5 +104,8 @@ export function sessionSummary(state: SensorState): Record<string, unknown> {
     injections: state.injections,
     baselineEdges: state.baseline ? state.baseline.count : null,
     baselineAt: state.baseline ? state.baseline.at : null,
+    baselineScore: state.baseline?.score ?? null,
+    scoreVersion: state.baseline?.scoreVersion ?? null,
+    configHash: state.baseline?.configHash ?? null,
   };
 }
