@@ -8,6 +8,7 @@ import { EngineScan, countEdges, runScan } from './engine.js';
 import { diffEdges } from './diff.js';
 import { isReportable, renderHealth, renderInjection, renderScanReport } from './payload.js';
 import { appendLog, writeSessionReport } from './log.js';
+import { RawEvent, becameIdle, classifyEvent, isTracked } from './events.js';
 import {
   SensorState,
   createState,
@@ -33,12 +34,6 @@ export const SENSOR_NOTE =
   'reported instances; do not rename entities or weaken the scan to silence ' +
   'them. Tools: coupling_scan (actionable findings), coupling_health (counts ' +
   '+ session delta).';
-
-function sameDir(a: string | undefined, b: string): boolean {
-  if (!a) return true;
-  const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/$/, '').toLowerCase();
-  return norm(a) === norm(b);
-}
 
 interface Runtime {
   stateFor(sessionID: string): SensorState;
@@ -116,6 +111,7 @@ async function runTurnDiff(ctx: Ctx, opts: LoopOptions, rt: Runtime, sessionID: 
 
 function createHandlers(ctx: Ctx, opts: LoopOptions, rt: Runtime) {
   const busy = new Set<string>();
+  const lastStatus = new Map<string, string>();
 
   async function onIdle(sessionID: string): Promise<void> {
     if (busy.has(sessionID)) {
@@ -141,20 +137,33 @@ function createHandlers(ctx: Ctx, opts: LoopOptions, rt: Runtime) {
     });
   }
 
-  async function handleEvent(ev: {
-    type: string;
-    location?: { directory?: string };
-    data?: unknown;
-  }): Promise<void> {
-    if (ev.location && !sameDir(ev.location.directory, opts.cwd)) return;
-    const sessionID = (ev.data ?? {}) as { sessionID?: string };
-    if (!sessionID.sessionID) return;
-    const id = sessionID.sessionID;
-    // Scans are slow; never let one block the event stream. Diffs are always
-    // against the session baseline, so a skipped busy turn is caught next turn.
-    if (ev.type === 'session.created') void rt.baselineFor(id, rt.stateFor(id)).catch(() => undefined);
-    else if (ev.type === 'session.idle') void onIdle(id);
-    else if (ev.type === 'session.deleted') await onDeleted(id);
+  async function handleEvent(ev: RawEvent): Promise<void> {
+    const intent = classifyEvent(ev, opts.cwd);
+    if (!intent) {
+      // The directory filter is the branch that decides whether the agent ever
+      // sees the signal; dropping a tracked event silently would make "no idle"
+      // and "idle filtered out" indistinguishable (AGENTS.md).
+      if (isTracked(ev.type)) {
+        await rt.log({ event: 'event_skipped', type: ev.type, directory: ev.location?.directory ?? null });
+      }
+      return;
+    }
+    switch (intent.kind) {
+      case 'created':
+        void rt.baselineFor(intent.sessionID, rt.stateFor(intent.sessionID)).catch(() => undefined);
+        return;
+      case 'deleted':
+        await onDeleted(intent.sessionID);
+        return;
+      case 'activity': {
+        const previous = lastStatus.get(intent.sessionID);
+        lastStatus.set(intent.sessionID, intent.state);
+        // Scans are slow; never let one block the event stream. Diffs are always
+        // against the session baseline, so a skipped busy turn is caught next turn.
+        if (becameIdle(previous, intent.state)) await onIdle(intent.sessionID);
+        return;
+      }
+    }
   }
 
   return { handleEvent };
@@ -221,7 +230,7 @@ function subscribe(ctx: Ctx, opts: LoopOptions, rt: Runtime, stop: AbortControll
   void (async () => {
     for await (const ev of ctx.event.subscribe({ signal: stop.signal })) {
       if (stop.signal.aborted) break;
-      await handleEvent(ev as { type: string; location?: { directory?: string }; data?: unknown });
+      await handleEvent(ev as RawEvent);
     }
   })().catch(() => undefined);
 }

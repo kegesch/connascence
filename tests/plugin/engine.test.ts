@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runScan, parseScan, countEdges } from '../../plugin/engine.ts';
+import { runScan, parseScan, runtimeBinary, countEdges } from '../../plugin/engine.ts';
 import { diffEdges } from '../../plugin/diff.ts';
 import { isReportable, renderScanReport } from '../../plugin/payload.ts';
 
@@ -59,5 +59,16 @@ describe('parseScan', () => {
     expect(() => parseScan('not json')).toThrow();
     expect(() => parseScan('{"summary":{}}')).toThrow();
     expect(() => parseScan('{"summary":{},"edges":[]}')).not.toThrow();
+  });
+});
+
+describe('runtimeBinary', () => {
+  it('keeps real JS runtimes', () => {
+    expect(runtimeBinary('C:/Program Files/nodejs/node.exe')).toMatch(/node\.exe$/);
+    expect(runtimeBinary('/usr/bin/bun')).toBe('/usr/bin/bun');
+  });
+  it('falls back to node when execPath is the host binary (opencode.exe inside plugins)', () => {
+    expect(runtimeBinary('C:/opencode/opencode.exe')).toBe('node');
+    expect(runtimeBinary('C:/opencode/opencode')).toBe('node');
   });
 });

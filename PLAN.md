@@ -292,3 +292,55 @@ What survived the challenge: the IR-as-contract layering (now one-way via
 annotation maps), the discard list, 0-config baseline gating, falsifiable
 M4 exit criteria, fixture discipline, and the geometric-mean-as-gradient
 instinct.
+
+## 11. M0 status — 2026-10-19
+
+**Wired and running.** The plugin auto-loads from
+`.opencode/plugins/coupling-sensor/index.ts`, spawns the archived engine, and
+exposes `coupling.scan` / `coupling.health`. Live data: 1128 edges (name 801,
+identity 228, position 58, type 23, meaning 14, value 4), 81 actionable after
+the `name` filter. `baseline` and `tool_call` events land in
+`.coupling/sensor-log.jsonl`.
+
+**Defects found and fixed while getting it to run:**
+
+1. **Engine spawn re-entered opencode.** `runScan` used `process.execPath`,
+   which inside a plugin is the opencode binary. Fixed with `runtimeBinary()`:
+   use the current runtime only when it is a real JS runtime, else `node`.
+2. **The turn trigger was not the documented event.** The loop listened for
+   `session.idle`. Measured against the 2.0.26 stream, neither `session.idle`
+   nor `session.status` is delivered to plugins; the stream carries
+   `session.step.*`, `session.tool.*`, and `session.execution.*`. The turn
+   boundary is `session.step.ended` with `finish === "stop"` — a step that ends
+   with `tool-calls` continues the turn. Dispatch moved to `plugin/events.ts`
+   (pure, fixture-tested); `session.status`/`session.idle` stay as fallbacks
+   for builds that emit them. Deduped on the transition into idle.
+3. **A silent branch violated the observability rule.** Events dropped by the
+   directory filter produced no log line, making "no idle" and "idle filtered"
+   byte-identical. Tracked events dropped this way now log `event_skipped`.
+
+**Open items before M0 exit criteria can be claimed:**
+
+- **Baseline does not survive a plugin reload.** Editing a plugin source file
+  reloads the plugin, resets in-memory session state, and re-creates the
+  baseline — 11 baseline lines for one session in a single day. This pollutes
+  the experiment: the "session start" baseline moves mid-session. Fix before
+  the two-week run (must stay non-agent-writable; compute from git at the
+  session's first-seen revision, or persist outside the project).
+- **Live turn-diff/injection still unobserved.** The dispatch contract is
+  unit-tested and `session.step.ended` is confirmed on the wire; the first
+  observed `finish: "stop"` must produce a `turn` line, and a real edit must
+  produce `injected`.
+- Crude `(type, file, name)` diff keying and the forgeable observation log
+  remain as planned (M3a).
+
+## 12. Next steps
+
+1. **Close M0's wiring** (this week): confirm one `turn` and one `injected`
+   line in the observation log from a real edit; fix baseline durability.
+2. **Run the M0 experiment** (two weeks): archive sessions, then classify each
+   signal as acted-on or ignored, with the reason (payload too big, wrong
+   top-N, noisy, not applicable). Those reasons are the M4 payload spec input.
+3. **Do not start M1 before step 2 concludes** (PLAN.md §8–9): if the loop
+   cannot be made to matter with the crude engine, stop.
+

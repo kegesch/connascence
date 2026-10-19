@@ -3,6 +3,7 @@
 // `--format=json` output; nothing here re-implements engine behavior.
 
 import { execFile } from 'node:child_process';
+import path from 'node:path';
 import { promisify } from 'node:util';
 
 const execFileP = promisify(execFile);
@@ -51,9 +52,20 @@ export function parseScan(stdout: string): EngineScan {
   return parsed;
 }
 
+/**
+ * Pick the binary that runs dist/cli.js. Inside an opencode plugin,
+ * process.execPath is opencode itself (a compiled Bun binary) — spawning it
+ * would re-enter the opencode CLI. When execPath is a real JS runtime, use
+ * it; otherwise fall back to `node` on PATH.
+ */
+export function runtimeBinary(execPath: string): string {
+  const base = path.basename(execPath).toLowerCase().replace(/\.exe$/, '');
+  return /^(node|bun|deno)$/.test(base) ? execPath : 'node';
+}
+
 export async function runScan(req: ScanRequest): Promise<EngineScan> {
   const args = [req.engineEntry, 'scan', ...req.globs, '--format=json'];
-  const { stdout } = await execFileP(process.execPath, args, {
+  const { stdout } = await execFileP(runtimeBinary(process.execPath), args, {
     cwd: req.cwd,
     timeout: req.timeoutMs,
     maxBuffer: 256 * 1024 * 1024,
