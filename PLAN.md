@@ -323,21 +323,30 @@ the `name` filter. `baseline` and `tool_call` events land in
 
 - **Baseline does not survive a plugin reload.** Editing a plugin source file
   reloads the plugin, resets in-memory session state, and re-creates the
-  baseline — 11 baseline lines for one session in a single day. This pollutes
-  the experiment: the "session start" baseline moves mid-session. Fix before
-  the two-week run (must stay non-agent-writable; compute from git at the
-  session's first-seen revision, or persist outside the project).
-- **Live turn-diff/injection still unobserved.** The dispatch contract is
-  unit-tested and `session.step.ended` is confirmed on the wire; the first
-  observed `finish: "stop"` must produce a `turn` line, and a real edit must
-  produce `injected`.
+  baseline — 15 baseline lines across a handful of sessions in one day. This
+  pollutes the experiment: the "session start" baseline moves mid-session. Fix
+  before the two-week run (must stay non-agent-writable; compute from git at
+  the session's first-seen revision, or persist outside the project).
+- **Injection is proven in simulation, not yet live.** The turn branch is now
+  observed end-to-end (probe session `ses_eaa62626…`, 2026-10-19):
+
+  ```
+  session.step.ended  finish="stop"
+  baseline            1128 edges
+  turn                newEdges=0, fresh=0, injected=false
+  ```
+
+  A real edit that introduces coupling still needs to produce an `injected`
+  line; the real-engine simulation (`tests/plugin/loop-sim.test.ts`) covers
+  that path with a scratch project.
 - Crude `(type, file, name)` diff keying and the forgeable observation log
-  remain as planned (M3a).
+  remain as planned (M3a). The 69 `event_seen` lines from the measurement
+  probe are retained as evidence, not cleaned.
 
 ## 12. Next steps
 
-1. **Close M0's wiring** (this week): confirm one `turn` and one `injected`
-   line in the observation log from a real edit; fix baseline durability.
+1. **Close M0's wiring** (this week): fix baseline durability across reloads,
+   and capture one real `injected` line from an edit that adds coupling.
 2. **Run the M0 experiment** (two weeks): archive sessions, then classify each
    signal as acted-on or ignored, with the reason (payload too big, wrong
    top-N, noisy, not applicable). Those reasons are the M4 payload spec input.
