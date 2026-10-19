@@ -1,6 +1,7 @@
 import { Project, Symbol as TsSymbol } from 'ts-morph';
 import { IrProject } from '../../core/ir.js';
 import { newWalkState, visitNode } from './symbolTableWalker.js';
+import { assignIdentityHashes } from './identity.js';
 
 /**
  * Walks a TypeScript project and builds a table of definitions and references,
@@ -28,9 +29,11 @@ export function buildSymbolTable(filePathOrGlobs: string[]): SymbolTable {
 
   const state = walkProject(tsProject);
   const refIdToDefId = resolveReferences(state.refIdToSymbol, state.symbolToDefId);
+  const project: IrProject = { nodes: state.nodes, edges: [] };
+  assignIdentityHashes(project, refIdToDefId);
 
   return {
-    project: { nodes: state.nodes, edges: [] },
+    project,
     tsProject,
     refIdToSymbol: state.refIdToSymbol,
     defIdToSymbol: state.defIdToSymbol,

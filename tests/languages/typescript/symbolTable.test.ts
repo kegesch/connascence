@@ -50,3 +50,60 @@ describe('symbolTable', () => {
     expect(table.project.edges).toHaveLength(0);
   });
 });
+
+describe('structural identity (M3a)', () => {
+  const table = buildSymbolTable([FIXTURE]);
+  const nodes = table.project.nodes;
+  const helper = nodes.find((n) => n.kind === 'function' && n.name === 'helper')!;
+  const inner = nodes.find((n) => n.kind === 'function' && n.name === 'inner')!;
+
+  it('gives function definitions a structure-based identity', () => {
+    expect(helper.identityHash).toBe(helper.structureHash);
+    expect(helper.identityHash).toBeTruthy();
+  });
+
+  it('derives parameter identity from the owner and slot', () => {
+    const params = nodes.filter((n) => n.kind === 'parameter' && n.parentId === helper.id);
+    expect(params.map((p) => p.identityHash)).toEqual([
+      `${helper.identityHash}#p0`,
+      `${helper.identityHash}#p1`,
+    ]);
+  });
+
+  it('derives argument identity from the callee identity and slot', () => {
+    const args = nodes
+      .filter((n) => n.kind === 'argument')
+      .sort((a, b) => a.location.startLine - b.location.startLine || a.location.startColumn - b.location.startColumn);
+    expect(args.length).toBeGreaterThanOrEqual(2);
+    expect(args[0].identityHash).toBe(`${helper.identityHash}#a0`);
+    expect(args[1].identityHash).toBe(`${helper.identityHash}#a1`);
+  });
+
+  it('derives reference identity from the enclosing definition', () => {
+    const ref = nodes.find((n) => n.kind === 'reference' && n.name === 'helper' && n.ownerDefId === inner.id);
+    expect(ref?.identityHash).toBe(`ref@${inner.identityHash}`);
+  });
+
+  it('drops identity for structurally identical definitions (ambiguity rule)', () => {
+    // `helper` and `renamedHelper` are clones; keying them by structure would
+    // collapse their edges and hide coupling added inside the new clone
+    const both = buildSymbolTable([FIXTURE, 'tests/fixtures/symboltable/renamed.ts']);
+    const defs = both.project.nodes.filter(
+      (n) => n.kind === 'function' && (n.name === 'helper' || n.name === 'renamedHelper'),
+    );
+    expect(defs).toHaveLength(2);
+    expect(defs.map((n) => n.identityHash)).toEqual([undefined, undefined]);
+    const params = both.project.nodes.filter((n) => n.kind === 'parameter' && n.name === 'a');
+    expect(params.length).toBe(2);
+    expect(params.every((p) => p.identityHash === undefined)).toBe(true);
+  });
+
+  it('keeps the identity stable when the function is renamed', () => {
+    // structureHash abstracts identifiers, so a different name in a different
+    // file yields the same identity (the documented clone-collision property)
+    const renamed = buildSymbolTable(['tests/fixtures/symboltable/renamed.ts']);
+    const alias = renamed.project.nodes.find((n) => n.kind === 'function')!;
+    expect(alias.name).toBe('renamedHelper');
+    expect(alias.identityHash).toBe(helper.identityHash);
+  });
+});

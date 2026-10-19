@@ -23,7 +23,7 @@ describe('edgeKey', () => {
     expect(edgeKey(win)).toBe(edgeKey(posix));
   });
 
-  it('ignores line numbers (the known M0 keying flaw M3a replaces)', () => {
+  it('ignores line numbers (structure-level keying, not line-level)', () => {
     const shifted = edge({ nodeA: { ...edge().nodeA, startLine: 99 } });
     expect(edgeKey(shifted)).toBe(edgeKey(edge()));
   });
@@ -33,6 +33,25 @@ describe('edgeKey', () => {
     expect(
       edgeKey(edge({ nodeB: { ...edge().nodeB, name: 'port' } })),
     ).not.toBe(edgeKey(edge()));
+  });
+
+  it('keys by structural identity, so a rename + move is not a new edge (M3a)', () => {
+    const before = edge({
+      nodeA: { ...edge().nodeA, identityHash: 'h1#a0', filePath: 'src/old/a.ts' },
+      nodeB: { ...edge().nodeB, identityHash: 'h1#p0', filePath: 'src/old/b.ts', name: 'host' },
+    });
+    const after = edge({
+      nodeA: { ...edge().nodeA, identityHash: 'h1#a0', filePath: 'src/lib/a.ts' },
+      nodeB: { ...edge().nodeB, identityHash: 'h1#p0', filePath: 'src/lib/b.ts', name: 'renamed' },
+    });
+    expect(edgeKey(after)).toBe(edgeKey(before));
+    expect(diffEdges([before], [after])).toEqual({ added: [], removed: [] });
+  });
+
+  it('falls back to file/name for endpoints without identity (older scans)', () => {
+    const before = edge();
+    const after = edge({ nodeB: { ...before.nodeB, name: 'port' } });
+    expect(edgeKey(after)).not.toBe(edgeKey(before));
   });
 });
 

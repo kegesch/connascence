@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ScanBackend } from './scan.js';
 import { ConnascenceConfig } from './config.js';
-import { ScoredEdge, ScanReport } from './scoring/score.js';
+import { EdgeEndpoint, ScoredEdge, ScanReport } from './scoring/score.js';
 import { toPosix } from './paths.js';
 
 export interface DiffOptions {
@@ -49,20 +49,26 @@ function relOf(root: string, filePath: string): string {
   return norm.startsWith(rootPosix) ? norm.slice(rootPosix.length) : norm;
 }
 
-function edgeKey(root: string, e: ScoredEdge): string {
-  return [
-    e.connascenceType,
-    relOf(root, e.nodeA.filePath),
-    e.nodeA.name,
-    relOf(root, e.nodeB.filePath),
-    e.nodeB.name,
-  ].join('|');
+/**
+ * Endpoint key: the adapter's move/rename-stable identity when available,
+ * otherwise the old repo-relative file + name fallback (module-level nodes and
+ * anything the adapter could not identify). Including the kind keeps a
+ * definition and a reference with the same identity hash apart.
+ */
+function endpointKey(root: string, n: EdgeEndpoint): string {
+  if (n.identityHash) return `i:${n.kind}:${n.identityHash}`;
+  return `p:${relOf(root, n.filePath)}:${n.name}`;
 }
 
 /**
- * Scan the project at two refs and diff the coupling graphs.
- * Edges are keyed by (type, endpoint file/name) so small line shifts still match.
+ * Edges are keyed by (type, endpoint identity) so line shifts, renames and
+ * file moves still match; the file/name fallback covers unidentifiable nodes.
+ * Two structurally identical functions share an identity, so their edges
+ * collapse into one key (see src/languages/typescript/identity.ts).
  */
+function edgeKey(root: string, e: ScoredEdge): string {
+  return [e.connascenceType, endpointKey(root, e.nodeA), endpointKey(root, e.nodeB)].join('|');
+}
 export function diffScan(opts: DiffOptions): DiffResult {
   const repo = path.resolve(opts.repoPath);
   const { base, head = 'working', globs, config = {}, backend, scanFn } = opts;

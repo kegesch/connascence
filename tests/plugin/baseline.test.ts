@@ -59,6 +59,14 @@ describe('baseline round trip', () => {
     expect(store.data.has(baselineKey('ses_1'))).toBe(false);
   });
 
+  it('ignores a baseline stored under an older key scheme', async () => {
+    const store = new MemoryStore();
+    // pre-M3a key scheme: baseline keys changed, so diffing against this record
+    // would report every edge as newly added; it must be treated as absent
+    await store.set('baseline/ses_1', record);
+    expect(await loadBaseline(store, 'ses_1')).toBeNull();
+  });
+
   it('propagates store failures (the loop degrades, it does not hang)', async () => {
     const broken: BaselineStore = {
       get: async () => {

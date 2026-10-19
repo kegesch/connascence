@@ -40,6 +40,8 @@ export interface EdgeEndpoint {
   /** innermost enclosing function scope, if any (from the IR scopePath) — lets
    *  core-level analyses reconstruct a call graph without language types */
   ownerName?: string;
+  /** move/rename-stable identity for diff keying (adapter-computed) */
+  identityHash?: string;
 }
 
 export interface ScanReport {
@@ -61,6 +63,7 @@ export function scoreProject(project: IrProject): ScanReport {
       filePath: node?.location.filePath ?? '?',
       startLine: node?.location.startLine ?? 0,
       ownerName: owner?.name,
+      identityHash: node?.identityHash,
     };
   }
 

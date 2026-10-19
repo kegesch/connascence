@@ -2,8 +2,9 @@
 // Baseline keys are captured at session start and persisted through plugin
 // reloads (see baseline.ts); the rest stays in plugin memory.
 //
-// The plan's M3a replaces this crude working-tree baseline with a git-derived
-// one; persisting keys is this milestone's equivalent stance.
+// M3a's structural edge identity is in place (diff.ts): keys survive renames
+// and file moves. The baseline is still the session-start working tree; the CI
+// gate recomputes its baseline from the merge-base instead.
 
 import { EngineEdge, EngineScan } from './engine.js';
 import { edgeKey } from './diff.js';

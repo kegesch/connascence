@@ -1,21 +1,25 @@
-// Crude session diff (M0). Edge keying deliberately mirrors the engine's
-// diff.ts key — (type, file, name) pairs — whose rename/move blindness is a
-// known flaw the plan schedules for replacement in M3a (structureHash keys +
-// move detection). Recording behavior against this key is part of the M0
-// experiment: if refactors storm the diff, that is M3a requirement evidence.
+// Session diff keying (M3a). Endpoints contributed by the engine carry a
+// move/rename-stable identityHash (function structure hash, owner+slot for
+// parameters/arguments, enclosing definition for references/literals), so a
+// rename or file move no longer turns every incident edge into an add. Nodes
+// the adapter cannot identify fall back to the old (type, file, name) key.
+//
+// Known limitation: structurally identical functions share an identity, so
+// edges between clones collapse into one key (documented in PLAN.md).
 
 import { EngineEdge } from './engine.js';
 
 const toPosix = (p: string): string => p.replace(/\\/g, '/');
 
+type Endpoint = Pick<EngineEdge, 'nodeA' | 'nodeB'>['nodeA'];
+
+function endpointKey(n: Endpoint): string {
+  if (n.identityHash) return `i:${n.kind}:${n.identityHash}`;
+  return `p:${toPosix(n.filePath)}:${n.name}`;
+}
+
 export function edgeKey(e: Pick<EngineEdge, 'connascenceType' | 'nodeA' | 'nodeB'>): string {
-  return [
-    e.connascenceType,
-    toPosix(e.nodeA.filePath),
-    e.nodeA.name,
-    toPosix(e.nodeB.filePath),
-    e.nodeB.name,
-  ].join('|');
+  return [e.connascenceType, endpointKey(e.nodeA), endpointKey(e.nodeB)].join('|');
 }
 
 export interface EdgeDiff {

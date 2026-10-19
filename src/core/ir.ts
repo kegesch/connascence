@@ -57,6 +57,19 @@ export interface IrNode {
    * Algorithm (clone) detector; core never interprets the hash, only groups equal ones.
    */
   structureHash?: string;
+  /**
+   * Move/rename-stable identity used by the diff (`src/core/diff.ts`, plugin
+   * session diff). Unlike `structureHash` it is assigned to every endpoint that
+   * can be identified structurally: parameters/arguments derive from their
+   * owner/callee identity plus slot, references and literals from their
+   * enclosing definition. Adapter-computed; core only compares values.
+   */
+  identityHash?: string;
+  /**
+   * Nearest enclosing modelled definition (function/method), if any. Adapter-
+   * computed; lets the identity pass stay purely IR-based.
+   */
+  ownerDefId?: string;
   /** For variable definitions: whether the binding is mutable (let/var). Adapter-computed. */
   mutable?: boolean;
   /** For variable definitions: the literal initial value, if any (e.g. "10"). Adapter-computed. */

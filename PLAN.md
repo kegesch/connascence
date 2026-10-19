@@ -399,3 +399,37 @@ baseline, replacing `(type, file, name)`. Prerequisite discovered here: only
 function definitions carry `structureHash`, so parameter/argument identity must
 be derived (owner hash + slot) before keying can be move-stable.
 
+### Iteration 2 — 2026-10-19: M3a structural edge identity
+
+Replaced the `(type, file, name)` diff key with a move/rename-stable key.
+
+- IR: `identityHash` on every identifiable endpoint; `ownerDefId` links
+  references/literals to their enclosing modelled function (adapter-computed;
+  core only compares strings).
+- Adapter (`src/languages/typescript/identity.ts`): function/method definitions
+  hash their identifier-abstracted structure; parameters are `<owner>#p<slot>`,
+  arguments `<callee>#a<slot>`, references `ref@<owner>`, literals
+  `<owner>#lit:<value>`.
+- **Ambiguity rule**: clones share `structureHash`, so a hash occurring twice
+  is dropped for *both* definitions and their endpoints fall back to
+  file/name. Without it the loop simulation showed a new clone-shaped
+  5-parameter function was invisible (0 new edges instead of 5) — a false
+  negative in the direction that matters most.
+- Both diffs (engine `src/core/diff.ts`, plugin `plugin/diff.ts`) key by
+  identity first, with the old file/name fallback for unidentifiable nodes
+  (module-level references, variables without structure).
+- Baseline storage key is versioned (`baseline/v2/<session>`): a pre-M3a
+  baseline is not read, so the first post-upgrade turn re-baselines instead of
+  reporting every edge as added.
+- Tests: rename+file-move diff fixture (0 added/removed position edges),
+  endpoint-identity fixtures, clone-ambiguity fixture, plugin key fixtures,
+  old-key baseline fixture.
+
+Dogfood: the new module's own 4-parameter helper was flagged and collapsed to
+a context object; `scan src/**/*.ts` is back to 0 actionable (1061 edges).
+193 tests green.
+
+**Next iteration:** M3a git-derived baseline — make `diff --base` optional and
+default to the merge-base with the branch's upstream (or the detected default
+branch), so CI does not have to compute the fork point itself.
+

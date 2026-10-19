@@ -25,8 +25,15 @@ export interface BaselineStore {
   remove(key: string): Promise<void>;
 }
 
+/**
+ * Bump when the edge-key scheme changes. The version is part of the storage
+ * key, so a baseline captured under an older scheme is simply not found; the
+ * session re-baselines instead of reporting every edge as newly added.
+ */
+export const BASELINE_KEY_VERSION = 2;
+
 export function baselineKey(sessionID: string): string {
-  return `baseline/${sessionID}`;
+  return `baseline/v${BASELINE_KEY_VERSION}/${sessionID}`;
 }
 
 /** Storage is user-writable, so treat a malformed record as "no baseline". */

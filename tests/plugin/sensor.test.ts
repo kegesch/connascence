@@ -43,7 +43,8 @@ describe('ensureBaseline', () => {
   it('keeps edge keys, not full edges, so a persisted baseline is compact', () => {
     const state = createState();
     const { baseline } = ensureBaseline(state, scan([edge('0')]));
-    expect(baseline.keys).toEqual([expect.stringContaining('position|src/a.ts|0|src/b.ts|host')]);
+    // this fixture edge carries no identityHash, so the fallback key applies
+    expect(baseline.keys).toEqual([expect.stringContaining('position|p:src/a.ts:0|p:src/b.ts:host')]);
   });
 });
 

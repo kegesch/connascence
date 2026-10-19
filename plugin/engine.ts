@@ -16,6 +16,8 @@ export interface EdgeEndpoint {
   filePath: string;
   startLine: number;
   ownerName?: string;
+  /** move/rename-stable endpoint identity (M3a); absent on older engine builds */
+  identityHash?: string;
 }
 
 export interface EngineEdge {

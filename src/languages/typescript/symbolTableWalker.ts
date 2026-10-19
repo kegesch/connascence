@@ -44,6 +44,7 @@ function handleCallLike(node: Node, file: import('ts-morph').SourceFile, state: 
   if (Node.isIdentifier(callee)) {
     const calleeRef = makeReference(callee, file);
     if (calleeRef) {
+      calleeRef.node.ownerDefId = enclosingOwner(callee, state);
       state.handledIdentifiers.add(callee);
       state.nodes.push(calleeRef.node);
       if (calleeRef.symbol) state.refIdToSymbol.set(calleeRef.node.id, calleeRef.symbol);
@@ -92,13 +93,16 @@ function isFunctionLike(node: Node): boolean {
 }
 
 /**
- * The IR definition that owns a parameter. Resolve the *nearest* function-like
- * AST ancestor rather than the nearest emitted definition: a callback's
- * parameters must not be attributed to the enclosing function, or a narrow
- * function with a wide callback looks wide and Position fires false positives.
- * Callbacks we do not model (bare arrow/function expressions) return undefined.
+ * The IR definition that owns a node. Resolve the *nearest* function-like AST
+ * ancestor rather than the nearest emitted definition: a callback's parameters
+ * must not be attributed to the enclosing function, or a narrow function with a
+ * wide callback looks wide and Position fires false positives. Callbacks we do
+ * not model (bare arrow/function expressions) return undefined.
+ *
+ * Also used to give references/literals a move-stable owner identity: a call
+ * site inside `foo` keeps its key when the file or `foo` is renamed.
  */
-function parameterOwner(node: Node, state: WalkState): string | undefined {
+function enclosingOwner(node: Node, state: WalkState): string | undefined {
   let fn: Node | undefined = node.getParent();
   while (fn && !isFunctionLike(fn)) fn = fn.getParent();
   if (!fn) return undefined;
@@ -123,14 +127,18 @@ function handleDefinition(node: Node, file: import('ts-morph').SourceFile, state
   state.nodes.push(defNode);
   state.defIdByTsNode.set(node, defNode.id);
 
-  // structural clone hash for function-like definitions
+  // structural clone hash for function-like definitions; the same
+  // identifier-abstracted hash doubles as the move/rename-stable diff identity
   const fnLike = fnLikeFor(node);
-  if (fnLike) defNode.structureHash = subtreeHash(fnLike);
+  if (fnLike) {
+    defNode.structureHash = subtreeHash(fnLike);
+    defNode.identityHash = defNode.structureHash;
+  }
   applyVariableInfo(node, defNode);
   if (Node.isParameterDeclaration(node)) {
     // link the parameter to the function-like definition that owns it; callback
     // parameters (unmodelled arrows) must not leak onto the enclosing function
-    defNode.parentId = parameterOwner(node, state);
+    defNode.parentId = enclosingOwner(node, state);
   }
   const symbol = nameNode.getSymbol();
   if (symbol) {
@@ -167,6 +175,7 @@ function handleLiteral(node: Node, file: import('ts-morph').SourceFile, state: W
       scopePath: buildScopeChain(node, file),
       location: locationOf(node, file),
       parentId: callId,
+      ownerDefId: enclosingOwner(node, state),
     });
   }
   return true;
@@ -183,6 +192,7 @@ function handleIdentifier(node: Node, file: import('ts-morph').SourceFile, state
   }
   const ref = makeReference(node, file);
   if (ref) {
+    ref.node.ownerDefId = enclosingOwner(node, state);
     state.handledIdentifiers.add(node);
     state.nodes.push(ref.node);
     if (ref.symbol) state.refIdToSymbol.set(ref.node.id, ref.symbol);

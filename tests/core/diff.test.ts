@@ -10,6 +10,7 @@ import { typescriptBackend } from '../../src/languages/typescript/backend.ts';
 let repo: string;
 let ref1: string;
 let ref2: string;
+let ref3: string;
 
 function git(...args: string[]): void {
   execFileSync('git', args, { cwd: repo, stdio: 'pipe' });
@@ -42,6 +43,21 @@ beforeAll(() => {
   git('add', '.');
   git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-m', 'add coupling');
   ref2 = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
+
+  // commit 3: move b.ts into src/lib/ and rename connect -> join (the M3a case)
+  mkdirSync(path.join(repo, 'src', 'lib'), { recursive: true });
+  writeFileSync(
+    path.join(repo, 'src', 'lib', 'connect.ts'),
+    'export function join(h: string, p: number, u: string, pw: string, db: string): string {\n  return h + p + u + pw + db;\n}\n',
+  );
+  writeFileSync(
+    path.join(repo, 'src', 'c.ts'),
+    'import { join } from "./lib/connect";\nexport const cfg = join("x", 1, "y", "z", "w");\n',
+  );
+  rmSync(path.join(repo, 'src', 'b.ts'));
+  git('add', '.');
+  git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-m', 'move and rename');
+  ref3 = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
 });
 
 afterAll(() => {
@@ -61,6 +77,14 @@ describe('diffScan', () => {
     const result = diffScan({ scanFn: scan, backend: typescriptBackend, repoPath: repo, base: ref2, head: ref1, globs: ['src/**/*.ts'] });
     expect(result.removed.some((e) => e.connascenceType === 'position')).toBe(true);
     expect(result.added.filter((e) => e.connascenceType === 'position')).toHaveLength(0);
+  }, 60000);
+
+  it('does not report a rename + file move as new positional coupling (M3a)', () => {
+    const result = diffScan({ scanFn: scan, backend: typescriptBackend, repoPath: repo, base: ref2, head: ref3, globs: ['src/**/*.ts'] });
+    expect(result.added.filter((e) => e.connascenceType === 'position')).toHaveLength(0);
+    expect(result.removed.filter((e) => e.connascenceType === 'position')).toHaveLength(0);
+    // identity is still present on the head scan, so the match is not vacuous
+    expect(result.headSummary.position).toBeGreaterThan(0);
   }, 60000);
 
   it('heuristicFindings=exclude drops heuristic edges', () => {
