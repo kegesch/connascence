@@ -30,8 +30,17 @@ const memberA = (e: EdgeEndpointRef) => memberAt(e, 'nodeA');
 
 type EdgeGroups = Map<string, ScoredEdge[]>;
 
+/** Named parameters: callers no longer depend on argument order (and the
+ *  Position sensor stops flagging this 4-parameter helper). */
+interface GroupSpec {
+  type: string;
+  keyOf: (e: ScoredEdge) => string;
+  dedupe?: boolean;
+}
+
 /** group edges of one connascence type by the given key function */
-function groupBy(edges: ScoredEdge[], type: string, keyOf: (e: ScoredEdge) => string, dedupe = false): EdgeGroups {
+function groupBy(edges: ScoredEdge[], spec: GroupSpec): EdgeGroups {
+  const { type, keyOf, dedupe = false } = spec;
   const groups: EdgeGroups = new Map();
   for (const e of edges) {
     if (e.connascenceType !== type) continue;
@@ -45,36 +54,45 @@ function groupBy(edges: ScoredEdge[], type: string, keyOf: (e: ScoredEdge) => st
 }
 
 function meaningGroupsOf(edges: ScoredEdge[]): EdgeGroups {
-  return groupBy(edges, 'meaning', (e) => {
+  return groupBy(edges, {
+    type: 'meaning',
     // evidence shape: `magic literal <VALUE> repeated at N call sites across M files (...)`
-    return e.evidence.split(' ')[2] ?? '?';
+    keyOf: (e) => e.evidence.split(' ')[2] ?? '?',
   });
 }
 
 function cloneGroupsOf(edges: ScoredEdge[]): EdgeGroups {
   // same clone group = same pair of function names (star/chain from one canonical member)
-  return groupBy(edges, 'algorithm', (e) => [e.nodeA.name, e.nodeB.name].sort().join('::'));
+  return groupBy(edges, {
+    type: 'algorithm',
+    keyOf: (e) => [e.nodeA.name, e.nodeB.name].sort().join('::'),
+  });
 }
 
 function identityGroupsOf(edges: ScoredEdge[]): EdgeGroups {
   // group by the shared mutable variable (def endpoint)
-  return groupBy(edges, 'identity', (e) => `${e.nodeB.filePath}:${e.nodeB.startLine}`);
+  return groupBy(edges, {
+    type: 'identity',
+    keyOf: (e) => `${e.nodeB.filePath}:${e.nodeB.startLine}`,
+  });
 }
 
 function nameGroupsOf(edges: ScoredEdge[]): EdgeGroups {
   // dedupe repeated identical (ref site -> def) pairs
-  return groupBy(
-    edges,
-    'name',
-    (e) => `${e.nodeA.filePath}:${e.nodeA.startLine}->${e.nodeB.filePath}:${e.nodeB.startLine}`,
-    true,
-  );
+  return groupBy(edges, {
+    type: 'name',
+    keyOf: (e) => `${e.nodeA.filePath}:${e.nodeA.startLine}->${e.nodeB.filePath}:${e.nodeB.startLine}`,
+    dedupe: true,
+  });
 }
 
 function positionGroupsOf(edges: ScoredEdge[]): EdgeGroups {
   // group by callee signature — all parameters of one function share the same
   // set of call sites, so keying on (callee file + call-site set) yields one finding per callee
-  const buckets = groupBy(edges, 'position', (e) => `${e.nodeB.filePath}|${e.nodeA.filePath}:${e.nodeA.startLine}`);
+  const buckets = groupBy(edges, {
+    type: 'position',
+    keyOf: (e) => `${e.nodeB.filePath}|${e.nodeA.filePath}:${e.nodeA.startLine}`,
+  });
   return mergePositionGroups(buckets);
 }
 

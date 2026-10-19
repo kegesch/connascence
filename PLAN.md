@@ -365,3 +365,37 @@ the `name` filter. `baseline` and `tool_call` events land in
 3. **Do not start M1 before step 2 concludes** (PLAN.md §8–9): if the loop
    cannot be made to matter with the crude engine, stop.
 
+## 13. Iteration log
+
+### Iteration 1 — 2026-10-19: precision gate on our own repo
+
+M1 (IR + ts-morph adapter) is already implemented by the restored archive, so
+the next open milestone is M3a. Before starting it, ran the §9 precision gate
+on this repo (81 actionable after the `name` filter) and fixed what it exposed.
+
+1. **Position false positives from nested callbacks.** The adapter attributed
+   every parameter to the nearest *emitted definition*, so a callback's
+   parameters landed on the enclosing function: `mergePositionGroups` (one real
+   parameter) was reported as a 5-parameter signature. Parameters now resolve
+   their nearest function-like AST ancestor and only attach when that function
+   is modelled (`parameterOwner`); regression fixture
+   `tests/fixtures/position/nested-callback.ts`.
+2. **The discarded Type detector was still in the default pipeline.** §6 calls
+   `refType === defType` tautological, and M2's launch set is Position,
+   Algorithm, Name, Identity. `detectType` is no longer called by `scan()`; the
+   module and its fixtures remain for the M7 rebuild. A scan-level test pins
+   the absence.
+3. **Dogfood refactors** (the sensor's own remediation): `findings.groupBy`
+   takes a named `GroupSpec`; `bestCommunityFor` no longer takes the redundant
+   `old` community; `splitOneFile` derives its file from the list; `clusterDir`
+   and `shouldSkipEdge` take context objects.
+
+Result: `scan src/**/*.ts` — edges 1128 → 1046, actionable 81 → 0, with no
+heuristic edges counted. 183 tests green.
+
+**Next iteration:** M3a edge identity — structural, move/rename-stable diff
+keys (`structureHash` + per-detector endpoint identity) and a git-derived
+baseline, replacing `(type, file, name)`. Prerequisite discovered here: only
+function definitions carry `structureHash`, so parameter/argument identity must
+be derived (owner hash + slot) before keying can be move-stable.
+

@@ -78,14 +78,34 @@ function fnLikeFor(node: Node): Node | undefined {
   return undefined;
 }
 
-/** nearest enclosing definition node that was already emitted (for param→owner links) */
-function ownerDefId(node: Node, state: WalkState): string | undefined {
-  let ancestor: Node | undefined = node.getParent();
-  while (ancestor) {
-    const ownerId = state.defIdByTsNode.get(ancestor);
-    if (ownerId) return ownerId;
-    ancestor = ancestor.getParent();
-  }
+/** True for AST nodes that introduce their own parameter list. */
+function isFunctionLike(node: Node): boolean {
+  return (
+    Node.isFunctionDeclaration(node) ||
+    Node.isMethodDeclaration(node) ||
+    Node.isFunctionExpression(node) ||
+    Node.isArrowFunction(node) ||
+    Node.isConstructorDeclaration(node) ||
+    Node.isGetAccessorDeclaration(node) ||
+    Node.isSetAccessorDeclaration(node)
+  );
+}
+
+/**
+ * The IR definition that owns a parameter. Resolve the *nearest* function-like
+ * AST ancestor rather than the nearest emitted definition: a callback's
+ * parameters must not be attributed to the enclosing function, or a narrow
+ * function with a wide callback looks wide and Position fires false positives.
+ * Callbacks we do not model (bare arrow/function expressions) return undefined.
+ */
+function parameterOwner(node: Node, state: WalkState): string | undefined {
+  let fn: Node | undefined = node.getParent();
+  while (fn && !isFunctionLike(fn)) fn = fn.getParent();
+  if (!fn) return undefined;
+  const direct = state.defIdByTsNode.get(fn);
+  if (direct) return direct;
+  const parent = fn.getParent();
+  if (parent && Node.isVariableDeclaration(parent)) return state.defIdByTsNode.get(parent);
   return undefined;
 }
 
@@ -108,8 +128,9 @@ function handleDefinition(node: Node, file: import('ts-morph').SourceFile, state
   if (fnLike) defNode.structureHash = subtreeHash(fnLike);
   applyVariableInfo(node, defNode);
   if (Node.isParameterDeclaration(node)) {
-    // link the parameter to its enclosing function/method definition
-    defNode.parentId = ownerDefId(node, state);
+    // link the parameter to the function-like definition that owns it; callback
+    // parameters (unmodelled arrows) must not leak onto the enclosing function
+    defNode.parentId = parameterOwner(node, state);
   }
   const symbol = nameNode.getSymbol();
   if (symbol) {

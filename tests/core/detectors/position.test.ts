@@ -53,4 +53,11 @@ describe('detectPosition', () => {
     const edges = detectPosition(neg);
     expect(edges).toHaveLength(0);
   });
+
+  it('does not attribute callback parameters to the enclosing function', () => {
+    // `configure` has one parameter but contains a 4-parameter callback; before
+    // the fix it looked 5-wide and `configure(true)` produced a position edge.
+    const { project: nested } = analyze(['tests/fixtures/position/nested-callback.ts']);
+    expect(detectPosition(nested)).toHaveLength(0);
+  });
 });

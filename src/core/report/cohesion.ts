@@ -53,11 +53,18 @@ interface DirStats {
   rootOf: (f: string) => string;
 }
 
+interface ClusterInput {
+  dir: string;
+  files: Set<string>;
+  dep: ScoredEdge[];
+  fileDir: Map<string, string>;
+}
+
 /** Union-find clusters for one directory: direct intra-dir edges, plus an
  *  affinity pass — two files belong together if they also depend on the same
  *  external targets / are consumed by the same external files (shared fan-out /
  *  fan-in). Files with only accidental adjacency end up in different clusters. */
-function clusterDir(dir: string, files: Set<string>, dep: ScoredEdge[], fileDir: Map<string, string>): DirStats {
+function clusterDir({ dir, files, dep, fileDir }: ClusterInput): DirStats {
   const { find, union } = unionFind();
   const stats: DirStats = {
     internalEdges: 0,
@@ -123,7 +130,7 @@ export function dirCohesion(edges: ScoredEdge[]): DirCohesion[] {
   for (const [dir, files] of filesByDir) {
     if (files.size < 3) continue; // not a module candidate
 
-    const stats = clusterDir(dir, files, dep, fileDir);
+    const stats = clusterDir({ dir, files, dep, fileDir });
 
     const clusters = new Map<string, string[]>();
     for (const f of files) {
@@ -193,7 +200,8 @@ const callerId = (n: ScoredEdge['nodeA']): string | undefined => {
 };
 
 /** Union-find clustering of one file's functions into concern groups. */
-function splitOneFile(file: string, list: Fn[], dep: ScoredEdge[], defs: Map<string, Fn>): FileSplit['groups'] {
+function splitOneFile(list: Fn[], dep: ScoredEdge[], defs: Map<string, Fn>): FileSplit['groups'] {
+  const file = list[0].file;
   const idsInFile = new Set(list.map((f) => f.id));
 
   // caller key -> the def node representing this function (match by name in file)
@@ -269,7 +277,7 @@ export function fileSplits(edges: ScoredEdge[]): FileSplit[] {
   const splits: FileSplit[] = [];
   for (const [file, list] of byFile) {
     if (list.length < MIN_FUNCTIONS) continue;
-    const groups = splitOneFile(file, list, dep, defs);
+    const groups = splitOneFile(list, dep, defs);
     if (groups.length >= MIN_GROUPS) splits.push({ file, groups });
   }
 

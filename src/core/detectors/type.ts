@@ -42,13 +42,15 @@ function isCrossModule(
   return !!a && !!b && a.location.filePath !== b.location.filePath;
 }
 
+interface SkipContext {
+  edge: IrProject['edges'][number];
+  byId: Map<string, IrProject['nodes'][number]>;
+  adapter: SemanticAdapter;
+  opts: ResolvedTypeOptions;
+}
+
 /** True when a name edge should not produce a type edge. */
-function shouldSkipEdge(
-  edge: IrProject['edges'][number],
-  byId: Map<string, IrProject['nodes'][number]>,
-  adapter: SemanticAdapter,
-  opts: ResolvedTypeOptions,
-): boolean {
+function shouldSkipEdge({ edge, byId, adapter, opts }: SkipContext): boolean {
   if (edge.connascenceType !== 'name') return true;
   if (opts.crossModuleOnly && !isCrossModule(edge, byId)) return true;
   const refType = adapter.resolveType(edge.nodeA);
@@ -74,7 +76,7 @@ export function detectType(
   const edges: IrProject['edges'] = [];
 
   for (const edge of project.edges) {
-    if (shouldSkipEdge(edge, byId, adapter, opts)) continue;
+    if (shouldSkipEdge({ edge, byId, adapter, opts })) continue;
     const refType = adapter.resolveType(edge.nodeA);
     const def = byId.get(edge.nodeB);
     edges.push({

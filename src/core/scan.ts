@@ -1,7 +1,6 @@
 import { detectName } from './detectors/name.js';
 import { detectPosition } from './detectors/position.js';
 import { detectAlgorithm } from './detectors/algorithm.js';
-import { detectType } from './detectors/type.js';
 import { detectMeaning } from './detectors/meaning.js';
 import { detectIdentity } from './detectors/identity.js';
 import { detectValue } from './detectors/value.js';
@@ -63,7 +62,10 @@ export function scan(
   project.edges = detectName(project, refIdToDefId);
   project.edges.push(...detectPosition(project));
   project.edges.push(...detectAlgorithm(project));
-  project.edges.push(...detectType(project, adapter));
+  // Type (current form) is deliberately not part of the default pipeline:
+  // PLAN.md §6 — it re-labels name edges via refType === defType and is
+  // tautological. It is rebuilt in M7 (duplicate structural types / primitive
+  // obsession) or dropped; the module and its fixtures stay for that rebuild.
   project.edges.push(...detectMeaning(project, {
     isUnionDiscriminant: (node) =>
       adapter.isStringUnionMember(

@@ -71,12 +71,8 @@ function linksIntoCommunities(
 }
 
 /** best (highest-gain) community for `node`; stays put on ties to prevent oscillation */
-function bestCommunityFor(
-  node: string,
-  old: number,
-  graph: Graph,
-  community: Map<string, number>,
-): number {
+function bestCommunityFor(node: string, graph: Graph, community: Map<string, number>): number {
+  const old = community.get(node)!;
   const ctx: GainCtx = { graph, community, linksInto: linksIntoCommunities(node, graph, community), node };
   let best = old;
   let bestGain = gainOf(old, ctx) - 1e-9;
@@ -95,7 +91,7 @@ function bestCommunityFor(
 function sweep(nodes: string[], graph: Graph, community: Map<string, number>): boolean {
   let moved = false;
   for (const node of nodes) {
-    const best = bestCommunityFor(node, community.get(node)!, graph, community);
+    const best = bestCommunityFor(node, graph, community);
     if (best !== community.get(node)) {
       community.set(node, best);
       moved = true;

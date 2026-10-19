@@ -3,6 +3,8 @@ import { buildSymbolTable } from '../../../src/languages/typescript/symbolTable.
 import { TypeScriptAdapter } from '../../../src/languages/typescript/adapter.ts';
 import { detectName } from '../../../src/core/detectors/name.ts';
 import { detectType } from '../../../src/core/detectors/type.ts';
+import { scan } from '../../../src/core/scan.ts';
+import { typescriptBackend } from '../../../src/languages/typescript/backend.ts';
 
 const FIXTURES = ['tests/fixtures/type/shared.ts', 'tests/fixtures/type/types.ts'];
 
@@ -28,4 +30,12 @@ describe('detectType', () => {
     const type = adapter.resolveType;
     expect(typeof type).toBe('function');
   });
+});
+
+describe('default scan pipeline', () => {
+  it('does not emit the discarded tautological type edges (PLAN §6 / M2 set)', () => {
+    const report = scan(FIXTURES, {}, typescriptBackend);
+    expect(report.edges.some((e) => e.connascenceType === 'type')).toBe(false);
+    expect(report.summary.type ?? 0).toBe(0);
+  }, 60000);
 });
