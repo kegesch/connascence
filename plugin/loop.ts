@@ -38,7 +38,7 @@ export const SENSOR_NOTE =
   'them. Tools: coupling_scan (actionable findings), coupling_health (counts ' +
   '+ session delta).';
 
-interface Runtime {
+export interface Runtime {
   stateFor(sessionID: string): SensorState;
   peek(sessionID: string): SensorState | undefined;
   scanOnce(): Promise<EngineScan>;
@@ -46,6 +46,9 @@ interface Runtime {
   forget(sessionID: string): Promise<void>;
   log(event: Record<string, unknown>): Promise<void>;
 }
+
+/** Delivers the advisory payload to the session (ctx.session.synthetic in prod). */
+export type Deliver = (sessionID: string, text: string) => Promise<void>;
 
 function createRuntime(opts: LoopOptions, store: BaselineStore): Runtime {
   const sessions = new Map<string, SensorState>();
@@ -138,7 +141,12 @@ function optsLog(opts: LoopOptions, event: Record<string, unknown>): Promise<voi
   return appendLog(opts.logDirAbs, event);
 }
 
-async function runTurnDiff(ctx: Ctx, opts: LoopOptions, rt: Runtime, sessionID: string): Promise<void> {
+async function runTurnDiff(
+  deliver: Deliver,
+  opts: LoopOptions,
+  rt: Runtime,
+  sessionID: string,
+): Promise<void> {
   const state = rt.stateFor(sessionID);
   try {
     const before = await rt.baselineFor(sessionID, state);
@@ -158,14 +166,14 @@ async function runTurnDiff(ctx: Ctx, opts: LoopOptions, rt: Runtime, sessionID: 
       cwd: opts.cwd,
       opts,
     });
-    await ctx.session.synthetic({ sessionID, text });
+    await deliver(sessionID, text);
     await rt.log({ event: 'injected', sessionID, count: fresh.length, chars: text.length });
   } catch (err) {
     await rt.log({ event: 'scan_error', sessionID, error: String(err) });
   }
 }
 
-function createHandlers(ctx: Ctx, opts: LoopOptions, rt: Runtime) {
+export function createHandlers(opts: LoopOptions, rt: Runtime, deliver: Deliver) {
   const busy = new Set<string>();
   const lastStatus = new Map<string, string>();
 
@@ -176,7 +184,7 @@ function createHandlers(ctx: Ctx, opts: LoopOptions, rt: Runtime) {
     }
     busy.add(sessionID);
     try {
-      await runTurnDiff(ctx, opts, rt, sessionID);
+      await runTurnDiff(deliver, opts, rt, sessionID);
     } finally {
       busy.delete(sessionID);
     }
@@ -287,7 +295,10 @@ async function registerContextHook(ctx: Ctx, opts: LoopOptions, rt: Runtime): Pr
 }
 
 function subscribe(ctx: Ctx, opts: LoopOptions, rt: Runtime, stop: AbortController): void {
-  const { handleEvent } = createHandlers(ctx, opts, rt);
+  const deliver: Deliver = async (sessionID, text) => {
+    await ctx.session.synthetic({ sessionID, text });
+  };
+  const { handleEvent } = createHandlers(opts, rt, deliver);
   void (async () => {
     for await (const ev of ctx.event.subscribe({ signal: stop.signal })) {
       if (stop.signal.aborted) break;
