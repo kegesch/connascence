@@ -13,6 +13,9 @@ const FIXTURE_GLOB = 'tests/fixtures/position/*.ts';
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
 const engineBuilt = existsSync(ENGINE);
+// These spawn the real CLI; under a full parallel run a cold Node start can
+// exceed vitest's 5s default. The work is bounded by timeoutMs, not the test.
+const SPAWN_TIMEOUT = 60_000;
 
 describe.skipIf(!engineBuilt)('engine bridge (spawn dist/cli.js)', () => {
   it('scans the position fixtures and returns parsed, scored edges', async () => {
@@ -28,14 +31,14 @@ describe.skipIf(!engineBuilt)('engine bridge (spawn dist/cli.js)', () => {
       expect(e.strength).toBeGreaterThan(0);
       expect(e.nodeA.filePath).toBeTruthy();
     }
-  });
+  }, SPAWN_TIMEOUT);
 
   it('is deterministic: two identical scans produce identical edge keys', async () => {
     const req = { engineEntry: ENGINE, cwd: REPO_ROOT, globs: [FIXTURE_GLOB], timeoutMs: 120_000 };
     const a = await runScan(req);
     const b = await runScan(req);
     expect(countEdges(a)).toBe(countEdges(b));
-  });
+  }, SPAWN_TIMEOUT);
 
   it('feeds the crude diff + payload pipeline end to end', async () => {
     const scan = await runScan({
@@ -51,7 +54,7 @@ describe.skipIf(!engineBuilt)('engine bridge (spawn dist/cli.js)', () => {
     const text = renderScanReport({ scan, reportable, cwd: REPO_ROOT, opts: { top: 5, budgetChars: 1500 } });
     expect(text).toContain('position');
     expect(text).toContain('fix:');
-  });
+  }, SPAWN_TIMEOUT);
 });
 
 describe('parseScan', () => {
