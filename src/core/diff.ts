@@ -6,6 +6,7 @@ import { ScanBackend } from './scan.js';
 import { ConnascenceConfig } from './config.js';
 import { EdgeEndpoint, ScoredEdge, ScanReport } from './scoring/score.js';
 import { toPosix } from './paths.js';
+import { cycleIdentity, type FileCycle } from './report/cycles.js';
 
 export interface DiffOptions {
   /** scan pipeline to run at each ref (injected by the composition root) */
@@ -26,6 +27,10 @@ export interface DiffOptions {
 export interface DiffResult {
   added: ScoredEdge[];
   removed: ScoredEdge[];
+  /** SCCs present at head but not at base (identity = member-file set) */
+  addedCycles: FileCycle[];
+  /** SCCs present at base but not at head */
+  removedCycles: FileCycle[];
   baseSummary: ScanReport['summary'];
   headSummary: ScanReport['summary'];
 }
@@ -70,6 +75,11 @@ function endpointKey(root: string, n: EdgeEndpoint): string {
 function edgeKey(root: string, e: ScoredEdge): string {
   return [e.connascenceType, endpointKey(root, e.nodeA), endpointKey(root, e.nodeB)].join('|');
 }
+
+/** Cycle identity is its member set, repo-relative so two checkouts match. */
+function cycleKey(root: string, c: FileCycle): string {
+  return cycleIdentity(c.files.map((f) => relOf(root, f)));
+}
 export function diffScan(opts: DiffOptions): DiffResult {
   const repo = path.resolve(opts.repoPath);
   const { base, head = 'working', globs, config = {}, backend, scanFn } = opts;
@@ -102,12 +112,23 @@ export function diffScan(opts: DiffOptions): DiffResult {
   const added = headScan.report.edges.filter((e) => !baseKeys.has(edgeKey(headScan.root, e)));
   const removed = baseScan.report.edges.filter((e) => !headKeys.has(edgeKey(baseScan.root, e)));
 
+  // cycles are compared as components: adding an import that closes an existing
+  // path changes the member set, but the new cycle is the signal
+  const baseCycles = baseScan.report.cycles ?? [];
+  const headCycles = headScan.report.cycles ?? [];
+  const baseCycleKeys = new Set(baseCycles.map((c) => cycleKey(baseScan.root, c)));
+  const headCycleKeys = new Set(headCycles.map((c) => cycleKey(headScan.root, c)));
+  const addedCycles = headCycles.filter((c) => !baseCycleKeys.has(cycleKey(headScan.root, c)));
+  const removedCycles = baseCycles.filter((c) => !headCycleKeys.has(cycleKey(baseScan.root, c)));
+
   if (baseScan.root !== repo) rmSync(baseScan.root, { recursive: true, force: true });
   if (headScan.root !== repo && headScan.root !== baseScan.root) rmSync(headScan.root, { recursive: true, force: true });
 
   return {
     added,
     removed,
+    addedCycles,
+    removedCycles,
     baseSummary: baseScan.report.summary,
     headSummary: headScan.report.summary,
   };

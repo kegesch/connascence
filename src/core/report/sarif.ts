@@ -1,6 +1,14 @@
 import { ScoredEdge } from '../scoring/score.js';
 import { CONNASCENCE_TYPES, HEURISTIC_TYPES } from '../scoring/score.js';
 import { toPosix } from '../paths.js';
+import type { FileCycle } from './cycles.js';
+
+interface SarifRule {
+  id: string;
+  shortDescription: { text: string };
+  helpUri: string;
+  properties: { heuristic: boolean; strength: number };
+}
 
 /** SARIF default level by strength: strong coupling is an error, mid is a warning, weak is a note. */
 function levelFor(strength: number): 'error' | 'warning' | 'note' {
@@ -15,13 +23,8 @@ function relUri(repoRoot: string, filePath: string): string {
   return file.startsWith(root) ? file.slice(root.length) : file;
 }
 
-/**
- * SARIF 2.1.0 output — the standard for code-quality tooling, ingested by
- * GitHub code scanning, Azure DevOps, ESLint/Sarif viewers, etc.
- * One rule per connascence type; one result per edge.
- */
-export function renderSarif(edges: ScoredEdge[], repoRoot: string, toolVersion = '0.1.0'): string {
-  const rules = CONNASCENCE_TYPES.map((type) => ({
+function connascenceRules(): SarifRule[] {
+  return CONNASCENCE_TYPES.map((type) => ({
     id: type,
     shortDescription: { text: `Connascence of ${type}` },
     helpUri: `https://connascence.io/${type}`,
@@ -31,8 +34,10 @@ export function renderSarif(edges: ScoredEdge[], repoRoot: string, toolVersion =
       strength: ['name', 'type', 'meaning', 'position', 'algorithm', 'execution', 'timing', 'value', 'identity'].indexOf(type) + 1,
     },
   }));
+}
 
-  const results = edges.map((e) => ({
+function edgeResults(edges: ScoredEdge[], repoRoot: string) {
+  return edges.map((e) => ({
     ruleId: e.connascenceType,
     level: levelFor(e.strength),
     message: {
@@ -54,6 +59,49 @@ export function renderSarif(edges: ScoredEdge[], repoRoot: string, toolVersion =
     ],
     partialFingerprints: { endpointB: `${relUri(repoRoot, e.nodeB.filePath)}#${e.nodeB.name}` },
   }));
+}
+
+function cycleResults(cycles: FileCycle[], repoRoot: string) {
+  return cycles.map((c) => ({
+    ruleId: 'cycle',
+    level: 'error' as const,
+    message: {
+      text: `resolved dependency cycle across ${c.files.length} files: ${c.files.map((f) => relUri(repoRoot, f)).join(' -> ')}`,
+    },
+    locations: c.members.map((m) => ({
+      physicalLocation: {
+        artifactLocation: { uri: relUri(repoRoot, m.filePath) },
+        region: { startLine: m.startLine },
+      },
+    })),
+    partialFingerprints: { cycle: c.files.map((f) => relUri(repoRoot, f)).join('|') },
+  }));
+}
+
+export interface SarifOptions {
+  edges: ScoredEdge[];
+  repoRoot: string;
+  cycles?: FileCycle[];
+  toolVersion?: string;
+}
+
+/**
+ * SARIF 2.1.0 output — the standard for code-quality tooling, ingested by
+ * GitHub code scanning, Azure DevOps, ESLint/Sarif viewers, etc.
+ * One rule per connascence type plus cycle (SCC); one result per edge/cycle.
+ */
+export function renderSarif({ edges, repoRoot, cycles = [], toolVersion = '0.1.0' }: SarifOptions): string {
+  const rules: SarifRule[] = [
+    ...connascenceRules(),
+    // not a connascence type: strength 0 keeps the rule shape uniform
+    {
+      id: 'cycle',
+      shortDescription: { text: 'Dependency cycle (SCC)' },
+      helpUri: 'https://connascence.io/algorithm',
+      properties: { heuristic: false, strength: 0 },
+    },
+  ];
+  const results = [...edgeResults(edges, repoRoot), ...cycleResults(cycles, repoRoot)];
 
   return JSON.stringify(
     {

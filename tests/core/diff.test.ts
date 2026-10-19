@@ -11,6 +11,7 @@ let repo: string;
 let ref1: string;
 let ref2: string;
 let ref3: string;
+let ref4: string;
 
 function git(...args: string[]): void {
   execFileSync('git', args, { cwd: repo, stdio: 'pipe' });
@@ -58,6 +59,21 @@ beforeAll(() => {
   git('add', '.');
   git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-m', 'move and rename');
   ref3 = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
+
+  // commit 4: close a resolved dependency cycle (a.ts <-> cycle.ts); the only
+  // added edges are name edges, which the edge gate ignores, so the cycle is
+  // the signal that must still fail the gate
+  writeFileSync(
+    path.join(repo, 'src', 'cycle.ts'),
+    'import { add } from "./a";\nexport function back(x: number): number {\n  return add(x, 1);\n}\n',
+  );
+  writeFileSync(
+    path.join(repo, 'src', 'a.ts'),
+    'import { back } from "./cycle";\nexport function add(a: number, b: number): number {\n  return back(a) + b;\n}\n',
+  );
+  git('add', '.');
+  git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-m', 'add cycle');
+  ref4 = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
 });
 
 afterAll(() => {
@@ -85,6 +101,19 @@ describe('diffScan', () => {
     expect(result.removed.filter((e) => e.connascenceType === 'position')).toHaveLength(0);
     // identity is still present on the head scan, so the match is not vacuous
     expect(result.headSummary.position).toBeGreaterThan(0);
+  }, 60000);
+
+  it('reports a newly closed dependency cycle even when its edges are name-only', () => {
+    const result = diffScan({ scanFn: scan, backend: typescriptBackend, repoPath: repo, base: ref3, head: ref4, globs: ['src/**/*.ts'] });
+    expect(result.addedCycles).toHaveLength(1);
+    expect(result.addedCycles[0].files.map((f) => path.basename(f)).sort()).toEqual(['a.ts', 'cycle.ts']);
+    expect(result.removedCycles).toHaveLength(0);
+  }, 60000);
+
+  it('reports a broken cycle as removed in the reverse direction', () => {
+    const result = diffScan({ scanFn: scan, backend: typescriptBackend, repoPath: repo, base: ref4, head: ref3, globs: ['src/**/*.ts'] });
+    expect(result.removedCycles).toHaveLength(1);
+    expect(result.addedCycles).toHaveLength(0);
   }, 60000);
 
   it('heuristicFindings=exclude drops heuristic edges', () => {

@@ -1,6 +1,7 @@
 import { ScanReport, ScoredEdge } from '../scoring/score.js';
 import { Severity, severityOf } from './severity.js';
 import { shortPath } from '../paths.js';
+import type { FileCycle } from './cycles.js';
 
 export interface Finding {
   kind: string;
@@ -141,6 +142,8 @@ function cloneFinding(group: ScoredEdge[]): Finding {
 function positionFinding(group: ScoredEdge[]): Finding | undefined {
   const callSites = dedupe(group.map(memberA));
   const callee = group[0].nodeB;
+  // nodeB is the parameter definition; the function name comes from its scope
+  const calleeName = callee.ownerName ?? callee.name;
   const paramNames = dedupe(group.map(memberOf)).map((m) => m.name);
   // with a single parameter there is no position to get wrong — that coupling
   // is name/type, not position; reporting it is noise with bad fix advice.
@@ -148,12 +151,12 @@ function positionFinding(group: ScoredEdge[]): Finding | undefined {
   const params = paramNames.join(', ');
   return {
     kind: 'position',
-    summary: `${callee.name}() (${relShort(callee.filePath)}:${callee.startLine}) takes ${paramNames.length} positional params (${params}) across ${callSites.length} call site(s)`,
+    summary: `${calleeName}() (${relShort(callee.filePath)}:${callee.startLine}) takes ${paramNames.length} positional params (${params}) across ${callSites.length} call site(s)`,
     edgeCount: group.length,
     members: [...callSites, ...dedupe(group.map(memberOf))],
     worst: group[0],
     severity: downgradeIfTestOnly(callSites, severityOf(group[0])),
-    fix: `convert ${callee.name} (${relShort(callee.filePath)}:${callee.startLine}) to accept a single options object ({ ${params} }); update the ${callSites.length} call site(s) listed below`,
+    fix: `convert ${calleeName} (${relShort(callee.filePath)}:${callee.startLine}) to accept a single options object ({ ${params} }); update the ${callSites.length} call site(s) listed below`,
   };
 }
 
@@ -173,6 +176,24 @@ function nameFinding(e: ScoredEdge): Finding {
   };
 }
 
+function cycleFinding(c: FileCycle): Finding {
+  const names = c.files.map((f) => relShort(f));
+  const summary =
+    names.length === 2
+      ? `dependency cycle: ${names[0]} <-> ${names[1]}`
+      : `dependency cycle across ${names.length} files (SCC): ${names.join(', ')}`;
+  return {
+    kind: 'cycle',
+    summary,
+    edgeCount: c.edges.length,
+    members: c.members,
+    worst: c.worst,
+    // a resolved dependency cycle is a structural defect, not a candidate
+    severity: downgradeIfTestOnly(c.members, 'high'),
+    fix: `break the cycle by moving the shared definition into a third module (or invert one dependency with an interface) so ${names.join(', ')} depend one way only`,
+  };
+}
+
 function consumeAll(consumed: Set<ScoredEdge>, groups: EdgeGroups): void {
   for (const group of groups.values()) {
     for (const e of group) consumed.add(e);
@@ -186,7 +207,7 @@ function consumeAll(consumed: Set<ScoredEdge>, groups: EdgeGroups): void {
  * Everything else: one finding per edge.
  * Pure function; makes reports human-reviewable instead of O(n²).
  */
-export function clusterFindings(edges: ScoredEdge[]): Finding[] {
+export function clusterFindings(edges: ScoredEdge[], cycles: FileCycle[] = []): Finding[] {
   const meaningGroups = meaningGroupsOf(edges);
   const cloneGroups = cloneGroupsOf(edges);
   const identityGroups = identityGroupsOf(edges);
@@ -213,10 +234,12 @@ export function clusterFindings(edges: ScoredEdge[]): Finding[] {
     if (consumed.has(e)) continue;
     findings.push(nameFinding(e));
   }
+  for (const c of cycles) findings.push(cycleFinding(c));
 
   findings.sort(
     (a, b) =>
-      // certainty first: deterministic detectors before heuristic candidates
+      // graph-level defects first, then certainty: deterministic before heuristic
+      Number(b.kind === 'cycle') - Number(a.kind === 'cycle') ||
       Number(a.worst.heuristic) - Number(b.worst.heuristic) ||
       b.worst.strength - a.worst.strength ||
       b.members.length - a.members.length ||

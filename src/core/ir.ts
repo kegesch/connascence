@@ -83,6 +83,13 @@ export interface IrEdge {
   connascenceType: ConnascenceType;
   /** Human-readable explanation of why this coupling was flagged. Required for heuristic detectors. */
   evidence: string;
+  /**
+   * True when the adapter resolved the endpoints through its symbol/type
+   * checker rather than matching them by name. Cycle findings require this
+   * (PLAN.md §7): a name-matched graph hallucinates cycles through overloaded
+   * names. Adapters that cannot resolve leave it unset.
+   */
+  resolved?: boolean;
 }
 
 export interface IrProject {

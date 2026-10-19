@@ -1,4 +1,5 @@
 import { IrProject, IrEdge, IrNode } from '../ir.js';
+import type { FileCycle } from '../report/cycles.js';
 import { strengthOf } from './strength.js';
 import { localityOf } from './locality.js';
 import { degreeMap, degreeOf } from './degree.js';
@@ -29,6 +30,8 @@ export interface ScoredEdge {
   evidence: string;
   /** true for heuristic detectors (meaning/value/identity): candidates, not certainties */
   heuristic: boolean;
+  /** adapter resolved the endpoints through symbols/types, not by name (cycle findings require it) */
+  resolved?: boolean;
 }
 
 export interface EdgeEndpoint {
@@ -47,6 +50,8 @@ export interface EdgeEndpoint {
 export interface ScanReport {
   summary: Record<string, number>;
   edges: ScoredEdge[];
+  /** file-level SCCs over resolved dependencies (computed by the scan pipeline) */
+  cycles?: FileCycle[];
 }
 
 export function scoreProject(project: IrProject): ScanReport {
@@ -79,6 +84,7 @@ export function scoreProject(project: IrProject): ScanReport {
       degree: Math.min(degreeOf(degrees, edge.nodeA), degreeOf(degrees, edge.nodeB)),
       evidence: edge.evidence,
       heuristic: HEURISTIC_TYPES.has(edge.connascenceType),
+      resolved: edge.resolved,
     };
   });
 

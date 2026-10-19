@@ -453,8 +453,45 @@ heuristic candidates; the auto-derived base reports `merge-base with
 origin/main`. `scan src/**/*.ts` stays at 0 actionable (958 edges).
 198 tests green.
 
-**Next iteration:** M3a SCC cycles — the first launch *finding* tier. Build a
-type-resolved cycle detector over the IR (SCCs, not name-matched edges), with
-true-positive and true-negative fixtures, then wire it into `scan`/SARIF and
-dogfood it on this repo.
+### Iteration 4 — 2026-10-19: SCC cycle findings, gated and dogfooded
+
+- **Resolution provenance is now in the IR** (`IrEdge.resolved`, propagated to
+  `ScoredEdge.resolved`): `detectName` marks edges resolved because the adapter
+  mapped them through its symbol table. Cycle findings accept *only* resolved
+  name edges — an unresolved/name-matched graph produces statistics but never
+  accusations (§7).
+- `src/core/report/scc.ts`: iterative Kosaraju SCC with sorted traversals, so
+  component order is deterministic and 100k-file graphs cannot blow the call
+  stack. `src/core/report/cycles.ts` builds the file graph, ignores
+  self-references, and collapses overlapping loops into one SCC (one finding,
+  not one per back-edge).
+- Cycles are first-class: `ScanReport.cycles`, `clusterFindings(edges, cycles)`
+  (high severity, test-only demotion, concrete fix), SARIF rule `cycle` with
+  every member location, JSON `cycles`, and `diff` compares cycle member sets —
+  a new cycle gates even though all its edges are `name` (which the edge gate
+  ignores). `addedCycleCount`/`removedCycleCount` in diff JSON.
+- Architecture module cycles also use SCC now: a two-module loop is reported as
+  a tangle (not duplicated as a cycle), and tangles block layering just like
+  cycles (previous 2-cycle filter was off by one).
+- Tests: SCC components, resolved-only cycles, one-way chains, overlapping
+  loops, self-loops, deterministic ordering, tangle-vs-cycle, SARIF cycle
+  results, diff add/remove cycle, and the gate exit code.
+
+Dogfood caught two real issues in this iteration: the only file SCC in `src`
+was `architecture.ts` ↔ `architectureRender.ts` (the re-export that existed to
+keep the CLI import stable — removed; callers import the renderer directly),
+and the new 4-parameter helpers (`renderSarif`, `renderAgent`) produced 12
+position edges — both converted to options objects. The position finding also
+named the first parameter instead of the owning function (`edges()` instead of
+`renderSarif()`); it now uses `ownerName`, with a regression test.
+
+Final dogfood: `scan src/**/*.ts` = 995 edges, **0 actionable, 0 cycles**; the
+diff gate exits 0 on name/heuristic-only changes and 1 on a newly closed cycle
+(verified end-to-end on a temporary repo). 217 tests green.
+
+**Next iteration:** M3a temporal co-change channel — walk `git log` for
+file pairs that change together, emit them as heuristic candidates (never
+gate-eligible), and wire them into `scan`/JSON/SARIF with fixtures. This is the
+channel that catches semantic evasion (event buses, DI, string-keyed
+indirection) static edges cannot see.
 

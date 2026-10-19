@@ -38,6 +38,9 @@ export function detectName(
       nodeA: refId,
       nodeB: defId,
       connascenceType: 'name',
+      // the mapping came from the adapter's symbol resolution, so cycles may
+      // trust this edge (PLAN.md §7)
+      resolved: true,
       evidence: `reference to "${def.name}" at ${def.location.filePath}:${def.location.startLine}`,
     });
   }

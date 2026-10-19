@@ -7,7 +7,8 @@ import { loadConfig, evaluateConfig, filterHeuristics } from './core/config.js';
 import { clusterFindings, fileHotspots } from './core/report/findings.js';
 import { remediationFor } from './core/report/remediation.js';
 import { dirCohesion, cohesionFix, fileSplits } from './core/report/cohesion.js';
-import { evaluateArchitecture, architectureLevels, renderArchitectureLevels } from './core/report/architecture.js';
+import { evaluateArchitecture, architectureLevels } from './core/report/architecture.js';
+import { renderArchitectureLevels } from './core/report/architectureRender.js';
 import { toPosix } from './core/paths.js';
 import { HEURISTIC_TYPES } from './core/scoring/score.js';
 import type { ScoredEdge } from './core/scoring/score.js';
@@ -138,7 +139,7 @@ if (command === 'explain') {
 
 if (format === 'summary') {
   // default linter-style report: clustered, severity-ranked, human/agent readable
-  let findings = clusterFindings(edges);
+  let findings = clusterFindings(edges, report.cycles ?? []);
   // name connascence is import-by-name coupling — permanent, unavoidable, no action
   // possible. Show it only when explicitly requested; the edges stay in --format=json.
   if (!types.includes('name')) findings = findings.filter((f) => f.kind !== 'name');
@@ -222,7 +223,7 @@ if (format === 'html') {
     process.stdout.write(html);
   }
 } else if (format === 'sarif') {
-  const sarif = renderSarif(edges, path.resolve('.'));
+  const sarif = renderSarif({ edges, repoRoot: path.resolve('.'), cycles: report.cycles ?? [] });
   if (outFile) {
     writeFileSync(outFile, sarif, OUTPUT_ENCODING);
     console.log(`wrote SARIF report to ${outFile}`);
@@ -230,12 +231,16 @@ if (format === 'html') {
     console.log(sarif);
   }
 } else if (outFile) {
-  writeFileSync(outFile, JSON.stringify({ summary: report.summary, edges }, null, 2), OUTPUT_ENCODING);
+  writeFileSync(
+    outFile,
+    JSON.stringify({ summary: report.summary, cycles: report.cycles ?? [], edges }, null, 2),
+    OUTPUT_ENCODING,
+  );
   console.log(`wrote ${edges.length} edges to ${outFile}`);
 } else if (format === 'json') {
-  console.log(JSON.stringify({ summary: report.summary, edges }, null, 2));
+  console.log(JSON.stringify({ summary: report.summary, cycles: report.cycles ?? [], edges }, null, 2));
 } else if (format === 'findings') {
-  const findings = clusterFindings(edges);
+  const findings = clusterFindings(edges, report.cycles ?? []);
   console.log(`clustered ${edges.length} edges into ${findings.length} findings:\n`);
   const listedFindings = top > 0 ? findings.slice(0, top) : findings;
   for (const f of listedFindings) {

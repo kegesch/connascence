@@ -5,6 +5,7 @@ import { detectMeaning } from './detectors/meaning.js';
 import { detectIdentity } from './detectors/identity.js';
 import { detectValue } from './detectors/value.js';
 import { scoreProject, ScanReport } from './scoring/score.js';
+import { findFileCycles } from './report/cycles.js';
 import { IrProject } from './ir.js';
 import { SemanticAdapter } from './adapter.js';
 
@@ -76,5 +77,8 @@ export function scan(
   }));
   project.edges.push(...detectIdentity(project));
   project.edges.push(...detectValue(project));
-  return scoreProject(project);
+  const report = scoreProject(project);
+  // graph-level findings are computed after scoring: they need resolved edges
+  report.cycles = findFileCycles(report.edges);
+  return report;
 }

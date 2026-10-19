@@ -2,11 +2,13 @@ import { describe, it, expect } from 'vitest';
 import {
   architectureReport,
   fileClusters,
-  renderArchitecture,
-  renderArchitectureLevels,
   architectureLevels,
   layering,
 } from '../../../src/core/report/architecture.ts';
+import {
+  renderArchitecture,
+  renderArchitectureLevels,
+} from '../../../src/core/report/architectureRender.ts';
 import type { ScoredEdge } from '../../../src/core/scoring/score.ts';
 
 function dep(fromFile: string, toFile: string, opts: { strength?: number; type?: ScoredEdge['connascenceType']; heuristic?: boolean } = {}): ScoredEdge {
@@ -135,6 +137,24 @@ describe('architectureReport', () => {
     expect(r.cycles).toHaveLength(1);
     expect(r.cycles[0]).toHaveLength(4); // a -> b -> c -> a
     expect(r.tangles).toHaveLength(0); // no direct two-way pair
+  });
+
+  it('reports a two-module loop as a tangle, not a separate cycle', () => {
+    const edges = [
+      dep('a/x.ts', 'a/z.ts', { strength: 5 }),
+      dep('a/z.ts', 'a/y.ts', { strength: 5 }),
+      dep('a/y.ts', 'a/x.ts', { strength: 5 }),
+      dep('b/x.ts', 'b/z.ts', { strength: 5 }),
+      dep('b/z.ts', 'b/y.ts', { strength: 5 }),
+      dep('b/y.ts', 'b/x.ts', { strength: 5 }),
+      dep('a/x.ts', 'b/y.ts'),
+      dep('b/y.ts', 'a/x.ts'),
+    ];
+    const r = architectureReport(edges);
+    expect(r.tangles).toHaveLength(1);
+    expect(r.cycles).toHaveLength(0);
+    // the tangle still blocks layering
+    expect(layering(r)).toBeNull();
   });
 
   it('reports no cycles for a strictly layered dependency direction', () => {

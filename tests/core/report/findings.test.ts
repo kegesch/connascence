@@ -60,6 +60,23 @@ describe('clusterFindings', () => {
     expect(findings[0].members.length).toBe(4); // 2 call sites + 2 params
   });
 
+  it('names the callee by its owning function, not its first parameter', () => {
+    const param = (line: number, name: string): Partial<ScoredEdge['nodeB']> => ({
+      filePath: 'b.ts',
+      startLine: line,
+      name,
+      ownerName: 'renderSarif',
+    });
+    const findings = clusterFindings([
+      edge({ filePath: 'a.ts', startLine: 1 }, param(10, 'edges'), { connascenceType: 'position', strength: 4, heuristic: false }),
+      edge({ filePath: 'a.ts', startLine: 1 }, param(11, 'repoRoot'), { connascenceType: 'position', strength: 4, heuristic: false }),
+      edge({ filePath: 'c.ts', startLine: 5 }, param(10, 'edges'), { connascenceType: 'position', strength: 4, heuristic: false }),
+      edge({ filePath: 'c.ts', startLine: 5 }, param(11, 'repoRoot'), { connascenceType: 'position', strength: 4, heuristic: false }),
+    ]);
+    expect(findings[0].summary).toContain('renderSarif()');
+    expect(findings[0].summary).not.toContain('edges()');
+  });
+
   it('does not report single-parameter callees as position connascence', () => {
     // one param = no position to get wrong; that coupling is name/type, not position
     const findings = clusterFindings([

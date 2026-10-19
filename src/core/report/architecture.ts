@@ -2,6 +2,7 @@ import { ScoredEdge } from '../scoring/score.js';
 import { dirOf, KEY_SEP } from '../paths.js';
 import { ConnascenceConfig, Violation } from '../config.js';
 import { louvainCommunities, wkey } from './louvain.js';
+import { stronglyConnected } from './scc.js';
 
 /** Dependency edge types reliable enough to infer module structure from. */
 const DEP_TYPES = new Set(['name', 'type']);
@@ -242,34 +243,21 @@ function findTangles(dependencies: ClusterCoupling[]): ArchitectureReport['tangl
   return tangles;
 }
 
-/** DFS cycle detection on the module-level dependency graph */
+/**
+ * Kosaraju SCCs on the module-level dependency graph: one component = one
+ * cycle, so overlapping loops are not enumerated once per back-edge. Two-module
+ * components are tangles and are reported in `tangles` (the bidirectional pair
+ * is the actionable signal); closing the component (a -> ... -> a) keeps the
+ * rendered shape readable.
+ */
 function findCycles(modules: FileCluster[], dependencies: ClusterCoupling[]): string[][] {
-  const graph = new Map<string, string[]>();
-  for (const p of dependencies) {
-    if (!graph.has(p.from)) graph.set(p.from, []);
-    graph.get(p.from)!.push(p.to);
-  }
-  const cycles: string[][] = [];
-  const state = new Map<string, 0 | 1 | 2>(); // 0=unvisited 1=in-stack 2=done
-  const stack: string[] = [];
-  const visit = (n: string): void => {
-    state.set(n, 1);
-    stack.push(n);
-    for (const m of graph.get(n) ?? []) {
-      const s = state.get(m) ?? 0;
-      if (s === 0) visit(m);
-      else if (s === 1) {
-        const start = stack.indexOf(m);
-        cycles.push([...stack.slice(start), m]);
-      }
-    }
-    stack.pop();
-    state.set(n, 2);
-  };
-  for (const mod of modules) {
-    if ((state.get(mod.name) ?? 0) === 0) visit(mod.name);
-  }
-  return cycles.sort((a, b) => b.length - a.length);
+  const graph = new Map<string, Set<string>>();
+  for (const mod of modules) graph.set(mod.name, new Set());
+  for (const p of dependencies) graph.get(p.from)?.add(p.to);
+  return stronglyConnected(graph)
+    .filter((c) => c.length > 2)
+    .map((c) => [...c, c[0]])
+    .sort((a, b) => b.length - a.length || a[0].localeCompare(b[0]));
 }
 
 function reportForPartition(modules: FileCluster[], dep: ScoredEdge[]): ArchitectureReport {
@@ -281,15 +269,11 @@ function reportForPartition(modules: FileCluster[], dep: ScoredEdge[]): Architec
   const tangles = findTangles(dependencies);
   const cycles = findCycles(modules, dependencies);
 
-  // a tangle already reports the both-direction coupling; drop the redundant 2-cycle
-  const tangledPairs = new Set(tangles.map((t) => [t.a, t.b].sort().join(KEY_SEP)));
-  const realCycles = cycles.filter((c) => c.length > 2 || !tangledPairs.has([c[0], c[1]].sort().join(KEY_SEP)));
-
   return {
     modules,
     tangles,
     dependencies,
-    cycles: realCycles,
+    cycles,
     mismatches: modules.filter((m) => m.dirs.length >= MISMATCH_DIRS),
     clusters: modules.length,
     dependencyEdges: crossEdges,
@@ -356,7 +340,7 @@ export function evaluateArchitecture(
  * layering impossible.
  */
 export function layering(r: ArchitectureReport): string[][] | null {
-  if (r.cycles.length > 0) return null;
+  if (r.cycles.length > 0 || r.tangles.length > 0) return null;
   const nameOf = new Set(r.modules.map((m) => m.name));
   const deps = new Map<string, Set<string>>(); // module -> modules it depends on
   for (const m of r.modules) deps.set(m.name, new Set());
@@ -378,4 +362,4 @@ export function layering(r: ArchitectureReport): string[][] | null {
   return layers;
 }
 
-export { renderArchitecture, renderArchitectureLevels } from './architectureRender.js';
+
