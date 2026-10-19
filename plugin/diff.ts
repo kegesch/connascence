@@ -23,6 +23,12 @@ export interface EdgeDiff {
   removed: EngineEdge[];
 }
 
+/** Added edges given only baseline keys (a persisted baseline drops full edges). */
+export function diffAdded(beforeKeys: Iterable<string>, after: EngineEdge[]): EngineEdge[] {
+  const keys = beforeKeys instanceof Set ? beforeKeys : new Set(beforeKeys);
+  return after.filter((e) => !keys.has(edgeKey(e)));
+}
+
 export function diffEdges(before: EngineEdge[], after: EngineEdge[]): EdgeDiff {
   const beforeKeys = new Set(before.map(edgeKey));
   const afterKeys = new Set(after.map(edgeKey));

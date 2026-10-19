@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { edgeKey, diffEdges } from '../../plugin/diff.ts';
+import { edgeKey, diffEdges, diffAdded } from '../../plugin/diff.ts';
 import type { EngineEdge } from '../../plugin/engine.ts';
 
 function edge(overrides: Partial<EngineEdge> = {}): EngineEdge {
@@ -33,6 +33,26 @@ describe('edgeKey', () => {
     expect(
       edgeKey(edge({ nodeB: { ...edge().nodeB, name: 'port' } })),
     ).not.toBe(edgeKey(edge()));
+  });
+});
+
+describe('diffAdded', () => {
+  it('finds new edges against baseline keys only (the persisted form)', () => {
+    const before = [edge()];
+    const after = [edge(), edge({ connascenceType: 'algorithm', strength: 6 })];
+    const added = diffAdded(before.map(edgeKey), after);
+    expect(added).toHaveLength(1);
+    expect(added[0].connascenceType).toBe('algorithm');
+  });
+
+  it('accepts a Set as well as an array', () => {
+    expect(diffAdded(new Set([edgeKey(edge())]), [edge()])).toEqual([]);
+  });
+
+  it('matches diffEdges added when given the same before keys', () => {
+    const before = [edge(), edge({ connascenceType: 'identity', strength: 9 })];
+    const after = [before[1], edge({ connascenceType: 'value', strength: 2 })];
+    expect(diffAdded(before.map(edgeKey), after)).toEqual(diffEdges(before, after).added);
   });
 });
 

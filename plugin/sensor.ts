@@ -1,15 +1,25 @@
 // Per-session sensor state: baseline, turn accounting, injection dedupe.
-// State lives in plugin memory only — the optimizing agent cannot read or
-// edit it (the plan's M3a replaces the crude working-tree baseline with a
-// git-derived one; in-memory is this milestone's equivalent stance).
+// Baseline keys are captured at session start and persisted through plugin
+// reloads (see baseline.ts); the rest stays in plugin memory.
+//
+// The plan's M3a replaces this crude working-tree baseline with a git-derived
+// one; persisting keys is this milestone's equivalent stance.
 
 import { EngineEdge, EngineScan } from './engine.js';
 import { edgeKey } from './diff.js';
 
+export interface Baseline {
+  /** ISO time the baseline scan was captured */
+  at: string;
+  /** number of edges in the baseline scan */
+  count: number;
+  /** edge keys — set membership is all a later scan diff needs */
+  keys: string[];
+}
+
 export interface SensorState {
   /** scan captured at session start; null until the first scan lands */
-  baseline: EngineScan | null;
-  baselineAt: string | null;
+  baseline: Baseline | null;
   /** the agent was told the sensor exists (one system note per session) */
   notified: boolean;
   turns: number;
@@ -19,20 +29,30 @@ export interface SensorState {
 }
 
 export function createState(): SensorState {
-  return { baseline: null, baselineAt: null, notified: false, turns: 0, injections: 0, reported: new Set() };
+  return { baseline: null, notified: false, turns: 0, injections: 0, reported: new Set() };
+}
+
+export function baselineFromScan(scan: EngineScan, at = new Date().toISOString()): Baseline {
+  return { at, count: scan.edges.length, keys: scan.edges.map(edgeKey) };
 }
 
 /** Store the baseline scan; first write wins. */
 export interface BaselineResult {
-  baseline: EngineScan;
+  baseline: Baseline;
   created: boolean;
 }
 
 export function ensureBaseline(state: SensorState, scan: EngineScan): BaselineResult {
   if (state.baseline) return { baseline: state.baseline, created: false };
-  state.baseline = scan;
-  state.baselineAt = new Date().toISOString();
-  return { baseline: scan, created: true };
+  state.baseline = baselineFromScan(scan);
+  return { baseline: state.baseline, created: true };
+}
+
+/** Adopt a persisted baseline after a reload; first write wins. */
+export function adoptBaseline(state: SensorState, baseline: Baseline): boolean {
+  if (state.baseline) return false;
+  state.baseline = baseline;
+  return true;
 }
 
 /** Added edges not yet reported for this session. */
@@ -50,7 +70,7 @@ export function sessionSummary(state: SensorState): Record<string, unknown> {
   return {
     turns: state.turns,
     injections: state.injections,
-    baselineEdges: state.baseline ? state.baseline.edges.length : null,
-    baselineAt: state.baselineAt,
+    baselineEdges: state.baseline ? state.baseline.count : null,
+    baselineAt: state.baseline ? state.baseline.at : null,
   };
 }

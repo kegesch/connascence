@@ -321,13 +321,19 @@ the `name` filter. `baseline` and `tool_call` events land in
 
 **Open items before M0 exit criteria can be claimed:**
 
-- **Baseline does not survive a plugin reload.** Editing a plugin source file
-  reloads the plugin, resets in-memory session state, and re-creates the
-  baseline — 15 baseline lines across a handful of sessions in one day. This
-  pollutes the experiment: the "session start" baseline moves mid-session. Fix
-  before the two-week run (must stay non-agent-writable; compute from git at
-  the session's first-seen revision, or persist outside the project).
-- **Injection is proven in simulation, not yet live.** The turn branch is now
+- **Baseline durability — fixed.** The baseline now persists in opencode's
+  plugin storage (`plugin/baseline.ts`), keyed by session: keys only, no full
+  edges, outside the monitored project so the agent cannot edit it. Verified
+  live after a reload: `baseline_restored … baselineAt=19:27:31` while the
+  writes landed at 19:29:08/19:29:18/19:29:22 — the session-start baseline no
+  longer moves. A malformed stored record degrades to "no baseline" rather
+  than anchoring the diff to garbage.
+  - *Remaining caveat:* the `reported` dedupe set is still memory-only, so an
+    edge injected before a reload can be injected again after it. Reloads only
+    happen while editing plugin sources (not during the experiment), but it is
+    logged here so a duplicate signal is read as tooling noise, not agent
+    behavior.
+- **Injection is proven in simulation, not yet live.** The turn branch is
   observed end-to-end (probe session `ses_eaa62626…`, 2026-10-19):
 
   ```
@@ -340,13 +346,13 @@ the `name` filter. `baseline` and `tool_call` events land in
   line; the real-engine simulation (`tests/plugin/loop-sim.test.ts`) covers
   that path with a scratch project.
 - Crude `(type, file, name)` diff keying and the forgeable observation log
-  remain as planned (M3a). The 69 `event_seen` lines from the measurement
-  probe are retained as evidence, not cleaned.
+  remain as planned (M3a). The `event_seen` lines from the measurement probe
+  are retained as evidence, not cleaned.
 
 ## 12. Next steps
 
-1. **Close M0's wiring** (this week): fix baseline durability across reloads,
-   and capture one real `injected` line from an edit that adds coupling.
+1. **Close M0's wiring** (this week): capture one real `injected` line from an
+   edit that adds coupling. Baseline durability across reloads is done.
 2. **Run the M0 experiment** (two weeks): archive sessions, then classify each
    signal as acted-on or ignored, with the reason (payload too big, wrong
    top-N, noisy, not applicable). Those reasons are the M4 payload spec input.

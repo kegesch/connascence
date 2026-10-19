@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  adoptBaseline,
   createState,
   ensureBaseline,
   freshAdded,
@@ -34,8 +35,32 @@ describe('ensureBaseline', () => {
     const second = ensureBaseline(state, scan([]));
     expect(second.created).toBe(false);
     expect(second.baseline).toBe(first.baseline);
-    expect(state.baseline?.edges).toHaveLength(1);
-    expect(state.baselineAt).not.toBeNull();
+    expect(state.baseline?.keys).toHaveLength(1);
+    expect(state.baseline?.count).toBe(1);
+    expect(state.baseline?.at).toEqual(expect.any(String));
+  });
+
+  it('keeps edge keys, not full edges, so a persisted baseline is compact', () => {
+    const state = createState();
+    const { baseline } = ensureBaseline(state, scan([edge('0')]));
+    expect(baseline.keys).toEqual([expect.stringContaining('position|src/a.ts|0|src/b.ts|host')]);
+  });
+});
+
+describe('adoptBaseline', () => {
+  it('restores a persisted baseline when memory is empty after a reload', () => {
+    const state = createState();
+    const persisted = { at: '2026-10-19T00:00:00.000Z', count: 2, keys: ['a', 'b'] };
+    expect(adoptBaseline(state, persisted)).toBe(true);
+    expect(state.baseline).toEqual(persisted);
+  });
+
+  it('never overwrites a baseline captured by this instance', () => {
+    const state = createState();
+    ensureBaseline(state, scan([edge('0')]));
+    const adopted = adoptBaseline(state, { at: 'x', count: 0, keys: [] });
+    expect(adopted).toBe(false);
+    expect(state.baseline?.count).toBe(1);
   });
 });
 

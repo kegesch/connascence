@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runScan } from '../../plugin/engine.ts';
-import { diffEdges } from '../../plugin/diff.ts';
+import { diffAdded } from '../../plugin/diff.ts';
 import { isReportable, renderInjection } from '../../plugin/payload.ts';
 import { createState, ensureBaseline, freshAdded, markReported } from '../../plugin/sensor.ts';
 import { appendLog } from '../../plugin/log.ts';
@@ -47,18 +47,18 @@ describe.skipIf(!engineBuilt)('M0 loop simulation (real engine)', () => {
 
     const state = createState();
     const baseline = ensureBaseline(state, await runScan(scanArgs)).baseline;
-    expect(baseline.edges.length).toBeGreaterThanOrEqual(5); // connect() positional slots
+    expect(baseline.count).toBeGreaterThanOrEqual(5); // connect() positional slots
 
     await writeFile(path.join(project, 'src', 'app.ts'), APP_TS_EXTENDED, 'utf8');
     const after = await runScan(scanArgs);
 
-    const { added } = diffEdges(baseline.edges, after.edges);
+    const added = diffAdded(baseline.keys, after.edges);
     const fresh = freshAdded(state, added.filter((e) => isReportable(e, false)));
     expect(fresh.length).toBeGreaterThanOrEqual(5); // format()'s new positional slots
 
     const text = renderInjection({
       added: fresh,
-      edgesBefore: baseline.edges.length,
+      edgesBefore: baseline.count,
       edgesAfter: after.edges.length,
       cwd: project,
       opts: { top: 5, budgetChars: 1500 },
@@ -67,7 +67,7 @@ describe.skipIf(!engineBuilt)('M0 loop simulation (real engine)', () => {
     expect(text).toContain('fix: Reduce positional coupling');
 
     markReported(state, fresh);
-    const { added: addedAgain } = diffEdges(baseline.edges, after.edges);
+    const addedAgain = diffAdded(baseline.keys, after.edges);
     expect(freshAdded(state, addedAgain.filter((e) => isReportable(e, false)))).toHaveLength(0);
 
     const logDir = path.join(project, '.coupling');

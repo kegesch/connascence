@@ -4,19 +4,22 @@
 // so "why did the agent ignore the signal" has data (PLAN.md §8 M0, §9).
 
 import { Plugin } from '@opencode/plugin';
-import { EngineScan, countEdges, runScan } from './engine.js';
-import { diffEdges } from './diff.js';
+import { EngineScan, runScan } from './engine.js';
+import { diffAdded } from './diff.js';
 import { isReportable, renderHealth, renderInjection, renderScanReport } from './payload.js';
 import { appendLog, writeSessionReport } from './log.js';
 import { RawEvent, becameIdle, classifyEvent, isTracked } from './events.js';
 import {
+  Baseline,
   SensorState,
+  adoptBaseline,
   createState,
   ensureBaseline,
   freshAdded,
   markReported,
   sessionSummary,
 } from './sensor.js';
+import { BaselineStore, clearBaseline, loadBaseline, saveBaseline } from './baseline.js';
 import { SensorOptions } from './options.js';
 
 type Ctx = Parameters<Parameters<typeof Plugin.define>[0]['setup']>[0];
@@ -39,11 +42,12 @@ interface Runtime {
   stateFor(sessionID: string): SensorState;
   peek(sessionID: string): SensorState | undefined;
   scanOnce(): Promise<EngineScan>;
-  baselineFor(sessionID: string, state: SensorState): Promise<EngineScan>;
+  baselineFor(sessionID: string, state: SensorState): Promise<Baseline>;
+  forget(sessionID: string): Promise<void>;
   log(event: Record<string, unknown>): Promise<void>;
 }
 
-function createRuntime(opts: LoopOptions): Runtime {
+function createRuntime(opts: LoopOptions, store: BaselineStore): Runtime {
   const sessions = new Map<string, SensorState>();
   let pendingScan: Promise<EngineScan> | null = null;
 
@@ -68,14 +72,66 @@ function createRuntime(opts: LoopOptions): Runtime {
     return pendingScan;
   };
 
-  const baselineFor = async (sessionID: string, state: SensorState): Promise<EngineScan> => {
-    const scan = state.baseline ?? (await scanOnce());
-    const { baseline, created } = ensureBaseline(state, scan);
-    if (created) await optsLog(opts, { event: 'baseline', sessionID, edges: countEdges(baseline) });
+  const baselineFor = async (sessionID: string, state: SensorState): Promise<Baseline> => {
+    if (state.baseline) return state.baseline;
+    // A reload resets memory but not the session: restore the original
+    // baseline instead of letting the next scan silently become it.
+    const restored = await restore(store, sessionID, state, (event) => optsLog(opts, event));
+    if (restored) return restored;
+    const { baseline, created } = ensureBaseline(state, await scanOnce());
+    if (created) {
+      await persist(store, sessionID, baseline);
+      await optsLog(opts, { event: 'baseline', sessionID, edges: baseline.count, baselineAt: baseline.at });
+    }
     return baseline;
   };
 
-  return { stateFor, peek: (id: string) => sessions.get(id), scanOnce, baselineFor, log: (event) => optsLog(opts, event) };
+  const rt: Runtime = {
+    stateFor,
+    peek: (id: string) => sessions.get(id),
+    scanOnce,
+    baselineFor,
+    forget: async (sessionID: string) => {
+      sessions.delete(sessionID);
+      await clear(store, sessionID);
+    },
+    log: (event) => optsLog(opts, event),
+  };
+  return rt;
+}
+
+/** Storage is best-effort: a failed read must not stall the loop. */
+async function restore(
+  store: BaselineStore,
+  sessionID: string,
+  state: SensorState,
+  log: (event: Record<string, unknown>) => Promise<void>,
+): Promise<Baseline | null> {
+  let record: Baseline | null = null;
+  try {
+    record = await loadBaseline(store, sessionID);
+  } catch {
+    return null;
+  }
+  if (!record || !adoptBaseline(state, record)) return null;
+  await log({ event: 'baseline_restored', sessionID, edges: record.count, baselineAt: record.at });
+  return record;
+}
+
+async function persist(store: BaselineStore, sessionID: string, baseline: Baseline): Promise<void> {
+  try {
+    await saveBaseline(store, sessionID, baseline);
+  } catch {
+    // In-memory baseline still serves this instance.
+  }
+}
+
+async function clear(store: BaselineStore, sessionID: string): Promise<void> {
+  try {
+    await clearBaseline(store, sessionID);
+  } catch {
+    // Nothing to do; the session is ending.
+  }
 }
 
 function optsLog(opts: LoopOptions, event: Record<string, unknown>): Promise<void> {
@@ -87,7 +143,7 @@ async function runTurnDiff(ctx: Ctx, opts: LoopOptions, rt: Runtime, sessionID: 
   try {
     const before = await rt.baselineFor(sessionID, state);
     const after = await rt.scanOnce();
-    const { added } = diffEdges(before.edges, after.edges);
+    const added = diffAdded(before.keys, after.edges);
     const fresh = freshAdded(state, added.filter((e) => isReportable(e, opts.includeHeuristics)));
     if (!opts.inject || fresh.length === 0) {
       await rt.log({ event: 'turn', sessionID, newEdges: added.length, fresh: fresh.length, injected: false });
@@ -97,8 +153,8 @@ async function runTurnDiff(ctx: Ctx, opts: LoopOptions, rt: Runtime, sessionID: 
     state.injections += 1;
     const text = renderInjection({
       added: fresh,
-      edgesBefore: countEdges(before),
-      edgesAfter: countEdges(after),
+      edgesBefore: before.count,
+      edgesAfter: after.edges.length,
       cwd: opts.cwd,
       opts,
     });
@@ -128,13 +184,17 @@ function createHandlers(ctx: Ctx, opts: LoopOptions, rt: Runtime) {
 
   async function onDeleted(sessionID: string): Promise<void> {
     const state = rt.peek(sessionID);
-    if (!state) return;
-    await writeSessionReport(opts.logDirAbs, {
-      sessionID,
-      endedAt: new Date().toISOString(),
-      summary: sessionSummary(state),
-      finalEdges: null,
-    });
+    if (state) {
+      await writeSessionReport(opts.logDirAbs, {
+        sessionID,
+        endedAt: new Date().toISOString(),
+        summary: sessionSummary(state),
+        finalEdges: null,
+      });
+    }
+    // Drop the persisted baseline even if this instance never saw the session
+    // (post-reload end): a deleted session must not leave storage behind.
+    await rt.forget(sessionID);
   }
 
   async function handleEvent(ev: RawEvent): Promise<void> {
@@ -199,12 +259,13 @@ function registerTools(ctx: Ctx, opts: LoopOptions, rt: Runtime): Promise<unknow
       options: { namespace: 'coupling', codemode: true },
       execute: async (_input, context) => {
         const scan = await rt.scanOnce();
-        const baseline = rt.stateFor(context.sessionID).baseline;
+        const state = rt.stateFor(context.sessionID);
+        const baseline = await rt.baselineFor(context.sessionID, state);
         await rt.log({ event: 'tool_call', tool: 'health', sessionID: context.sessionID });
         return {
           content: renderHealth({
             scan,
-            edgesBefore: baseline ? countEdges(baseline) : null,
+            edgesBefore: baseline.count,
             cwd: opts.cwd,
             opts,
           }),
@@ -237,7 +298,14 @@ function subscribe(ctx: Ctx, opts: LoopOptions, rt: Runtime, stop: AbortControll
 
 export function createLoop(ctx: Ctx, opts: LoopOptions) {
   const stop = new AbortController();
-  const rt = createRuntime(opts);
+  // opencode storage takes effect's Schema.Json; BaselineRecord is JSON-shaped
+  // but has no index signature, so the narrowing is safe and kept local.
+  const store: BaselineStore = {
+    get: (key) => ctx.storage.get(key),
+    set: (key, value) => ctx.storage.set(key, value as unknown as Parameters<typeof ctx.storage.set>[1]),
+    remove: (key) => ctx.storage.remove(key),
+  };
+  const rt = createRuntime(opts, store);
   return {
     registerTools: () => registerTools(ctx, opts, rt),
     registerContextHook: () => registerContextHook(ctx, opts, rt),
@@ -245,3 +313,4 @@ export function createLoop(ctx: Ctx, opts: LoopOptions) {
     cleanup: () => stop.abort(),
   };
 }
+
