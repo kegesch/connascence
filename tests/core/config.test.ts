@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { globMatch } from '../../src/core/scan.ts';
-import { evaluateConfig } from '../../src/core/config.ts';
+import { evaluateConfig, gateableEdges } from '../../src/core/config.ts';
 import { evaluateArchitecture } from '../../src/core/report/architecture.ts';
 import type { ScanReport } from '../../src/core/scoring/score.ts';
 
@@ -54,6 +54,20 @@ describe('evaluateConfig', () => {
 
   it('missing types count as 0', () => {
     expect(evaluateConfig(baseReport, { thresholds: { timing: 0 } })).toHaveLength(0);
+  });
+});
+
+describe('gateableEdges', () => {
+  it('never gates on heuristic candidates', () => {
+    const edges = [
+      { connascenceType: 'name' },
+      { connascenceType: 'meaning' },
+      { connascenceType: 'value' },
+      { connascenceType: 'identity' },
+      { connascenceType: 'position' },
+      { connascenceType: 'algorithm' },
+    ];
+    expect(gateableEdges(edges).map((e) => e.connascenceType)).toEqual(['position', 'algorithm']);
   });
 });
 

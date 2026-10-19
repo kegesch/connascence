@@ -42,6 +42,20 @@ export function filterHeuristics<T extends { connascenceType: string }>(edges: T
   return config.heuristicFindings === 'exclude' ? edges.filter((e) => !HEURISTIC_TYPES.has(e.connascenceType)) : edges;
 }
 
+/** name connascence is permanent import-by-name coupling: informational only. */
+const INFORMATIONAL = new Set(['name']);
+
+/**
+ * Edges a CI diff gate may fail on. Heuristic detectors are candidates for a
+ * human/agent to review; letting them fail the build turns a noisy guess into
+ * an accusation (§6 discipline) and teaches the agent to stop trusting the
+ * gate. Name edges are imports: every new dependency would fail the build even
+ * though no design choice can avoid them.
+ */
+export function gateableEdges<T extends { connascenceType: string }>(edges: T[]): T[] {
+  return edges.filter((e) => !INFORMATIONAL.has(e.connascenceType) && !HEURISTIC_TYPES.has(e.connascenceType));
+}
+
 /** Evaluate a scored report against the config. Pure function. */
 export function evaluateConfig(report: ScanReport, config: ConnascenceConfig): Violation[] {
   const violations: Violation[] = [];

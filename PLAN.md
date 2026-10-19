@@ -429,7 +429,32 @@ Dogfood: the new module's own 4-parameter helper was flagged and collapsed to
 a context object; `scan src/**/*.ts` is back to 0 actionable (1061 edges).
 193 tests green.
 
-**Next iteration:** M3a git-derived baseline — make `diff --base` optional and
-default to the merge-base with the branch's upstream (or the detected default
-branch), so CI does not have to compute the fork point itself.
+### Iteration 3 — 2026-10-19: git-derived base and a gate that cannot accuse
+
+- `resolveBaseRef` (`src/core/gitBase.ts`): an explicit `--base` wins;
+  otherwise the ref is the **merge-base** of HEAD with `origin/HEAD`'s target,
+  then `origin/main`, `origin/master`, `main`, `master`. Merge-base, not the
+  branch tip: an advanced default branch must not report its work as removals.
+  Returns null (and the CLI asks for `--base`) when there is no remote or
+  default branch to derive from.
+- `diff` rendering moved to `src/cliDiff.ts` (cli.ts size limit). JSON output
+  gains `base`, `baseSource`, `confirmedCount`; the summary line shows the
+  provenance (`merge-base with origin/main (<sha>)`).
+- **Gate fix exposed by dogfooding**: the exit code counted every added edge,
+  so new imports (`name`) and heuristic candidates (`meaning`/`value`/
+  `identity`) failed CI. `gateableEdges` now mirrors the plugin's
+  `isReportable`: name is informational, heuristics are candidates, and only
+  position/algorithm gate. Candidates stay in the output and JSON for review.
+- Tests: resolver fixtures (origin/HEAD, candidate fallback, no default
+  branch), gateable split, plus the existing diff fixtures.
+
+Dogfood: `diff --base=HEAD` exits 0 for this iteration's own imports and
+heuristic candidates; the auto-derived base reports `merge-base with
+origin/main`. `scan src/**/*.ts` stays at 0 actionable (958 edges).
+198 tests green.
+
+**Next iteration:** M3a SCC cycles — the first launch *finding* tier. Build a
+type-resolved cycle detector over the IR (SCCs, not name-matched edges), with
+true-positive and true-negative fixtures, then wire it into `scan`/SARIF and
+dogfood it on this repo.
 

@@ -63,8 +63,9 @@ function endpointKey(root: string, n: EdgeEndpoint): string {
 /**
  * Edges are keyed by (type, endpoint identity) so line shifts, renames and
  * file moves still match; the file/name fallback covers unidentifiable nodes.
- * Two structurally identical functions share an identity, so their edges
- * collapse into one key (see src/languages/typescript/identity.ts).
+ * Identities shared by two definitions (clones) are dropped by the adapter, so
+ * they fall back here instead of collapsing their edges together (see
+ * src/languages/typescript/identity.ts).
  */
 function edgeKey(root: string, e: ScoredEdge): string {
   return [e.connascenceType, endpointKey(root, e.nodeA), endpointKey(root, e.nodeB)].join('|');

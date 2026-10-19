@@ -5,7 +5,7 @@ import { scan } from './core/scan.js';
 import { explain } from './core/explain.js';
 import { loadConfig, evaluateConfig, filterHeuristics } from './core/config.js';
 import { clusterFindings, fileHotspots } from './core/report/findings.js';
-import { remediationFor, remediationForType } from './core/report/remediation.js';
+import { remediationFor } from './core/report/remediation.js';
 import { dirCohesion, cohesionFix, fileSplits } from './core/report/cohesion.js';
 import { evaluateArchitecture, architectureLevels, renderArchitectureLevels } from './core/report/architecture.js';
 import { toPosix } from './core/paths.js';
@@ -14,6 +14,8 @@ import type { ScoredEdge } from './core/scoring/score.js';
 import { renderHtml } from './core/report/html.js';
 import { renderSarif } from './core/report/sarif.js';
 import { diffScan } from './core/diff.js';
+import { resolveBaseRef } from './core/gitBase.js';
+import { renderDiff } from './cliDiff.js';
 import { typescriptBackend } from './languages/typescript/backend.js';
 
 const OUTPUT_ENCODING: BufferEncoding = 'utf8';
@@ -25,12 +27,11 @@ function usage(): never {
   console.error('  --file=<pattern>       only edges touching files whose path contains this substring');
   console.error('  --min-degree=<n>       only edges with degree >= n');
   console.error('  --top=<n>              limit listed items (default 20, 0 = all)');
-  console.error('  --format=summary|findings|architecture|json|html|sarif|agent');
-  console.error('  --out=<file>           write JSON or HTML to file (UTF-8) instead of stdout');
+  console.error('  --format=summary|findings|architecture|json|html|sarif|agent  --out=<file> (JSON/HTML)');
   console.error('  --config=<file>        config file (default .connascence.yml if present)');
   console.error('       connascence explain <scan-glob...> -- <file>:<line>');
-  console.error('       connascence diff <glob...> --repo=<path> --base=<ref> [--head=<ref>]');
-  console.error('  (diff compares coupling between git refs; --head omitted = working tree; --format=agent emits harness-friendly feedback)');
+  console.error('       connascence diff <glob...> --repo=<path> [--base=<ref>] [--head=<ref>]');
+  console.error('  (diff refs: --head omitted = working tree, --base omitted = merge-base with origin/HEAD/default; --format=agent = harness feedback)');
   process.exit(1);
 }
 
@@ -78,65 +79,26 @@ const config = loadConfig(configPath);
 
 // ---- diff command: coupling introduced/removed between git refs ----
 if (command === 'diff') {
-  if (!repoPath || !baseRef) usage();
-  const result = diffScan({ scanFn: scan, backend: typescriptBackend, repoPath, base: baseRef, head: headRef, globs: patterns, config });
-  let added = filterHeuristics(result.added, config);
-  if (minStrength > 0) added = added.filter((e) => e.strength >= minStrength);
-  if (types.length > 0) added = added.filter((e) => types.includes(e.connascenceType));
-  if (filePattern) {
-    const p = filePattern.replace(/\\/g, '/').toLowerCase();
-    added = added.filter((e) => e.nodeA.filePath.toLowerCase().includes(p) || e.nodeB.filePath.toLowerCase().includes(p));
+  if (!repoPath) usage();
+  const base = resolveBaseRef(repoPath, baseRef);
+  if (!base) {
+    console.error('error: could not derive a base ref (no origin/HEAD or default branch); pass --base=<ref>');
+    process.exit(1);
   }
-  const rel = (p: string) => p.replace(/\\/g, '/').replace(/^.*\/(src|lib|app)\//, '$1/');
-
-  if (format === 'json' || outFile) {
-    const payload = format === 'sarif'
-      ? renderSarif(added, path.resolve(repoPath))
-      : JSON.stringify(
-      {
-        addedCount: added.length,
-        removedCount: result.removed.length,
-        summaryBefore: result.baseSummary,
-        summaryAfter: result.headSummary,
-        added,
-        removed: result.removed,
-      },
-      null,
-      2,
-    );
-    if (outFile) {
-      writeFileSync(outFile, payload, OUTPUT_ENCODING);
-      console.log(`wrote diff report to ${outFile}`);
-    } else {
-      console.log(payload);
-    }
-  } else if (format === 'agent') {
-    // compact, deterministic, prompt-friendly: what the edit introduced
-    if (added.length === 0) {
-      console.log('OK: no new coupling introduced.');
-    } else {
-      console.log(`WARNING: ${added.length} new coupling instance(s) introduced:`);
-      const listed = top > 0 ? added.slice(0, top) : added;
-      for (const e of listed) {
-        const h = HEURISTIC_TYPES.has(e.connascenceType) ? ' [candidate - review]' : '';
-        console.log(
-          `- ${e.connascenceType}${h}: ${rel(e.nodeA.filePath)}:${e.nodeA.startLine} (${e.nodeA.name}) <-> ${rel(e.nodeB.filePath)}:${e.nodeB.startLine} (${e.nodeB.name})`,
-        );
-        console.log(`  fix: ${remediationForType(e.connascenceType)}`);
-      }
-      if (top > 0 && added.length > top) console.log(`- ... ${added.length - top} more`);
-    }
-  } else {
-    console.log(`connascence diff ${baseRef}..${headRef}`);
-    console.log(`  summary before: ${JSON.stringify(result.baseSummary)}`);
-    console.log(`  summary after:  ${JSON.stringify(result.headSummary)}`);
-    console.log(`\nadded (${added.length}):`);
-    for (const e of (top > 0 ? added.slice(0, top) : added)) {
-      console.log(`  + [${e.connascenceType} s${e.strength} l${e.locality}] ${rel(e.nodeA.filePath)}:${e.nodeA.startLine} <-> ${rel(e.nodeB.filePath)}:${e.nodeB.startLine} — ${e.evidence.slice(0, 140)}`);
-    }
-    console.log(`\nremoved (${result.removed.length})`);
-  }
-  process.exit(added.length > 0 ? 1 : 0);
+  const result = diffScan({ scanFn: scan, backend: typescriptBackend, repoPath, base: base.ref, head: headRef, globs: patterns, config });
+  process.exit(renderDiff({
+    result,
+    config,
+    repoPath,
+    base,
+    head: headRef,
+    format,
+    outFile,
+    top,
+    minStrength,
+    types,
+    filePattern,
+  }));
 }
 
 const report = scan(patterns, config, typescriptBackend);
