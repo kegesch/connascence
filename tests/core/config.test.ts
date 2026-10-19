@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { globMatch } from '../../src/core/paths.ts';
-import { evaluateConfig, gateableEdges } from '../../src/core/config.ts';
+import { coChangeOptions, evaluateConfig, gateableEdges } from '../../src/core/config.ts';
 import { evaluateArchitecture } from '../../src/core/report/architecture.ts';
 import type { ScanReport } from '../../src/core/scoring/score.ts';
 
@@ -86,24 +86,48 @@ describe('evaluateArchitecture', () => {
     mismatches: [{ name: 'm', files: ['a'], dirs: ['d1', 'd2'] }],
     clusters: 1,
     dependencyEdges: 1,
+    levelization: { entries: [], depth: 3, components: 1, cyclic: false },
   } as never;
 
   it('passes with no architecture config', () => {
     expect(evaluateArchitecture(arch, {})).toHaveLength(0);
   });
 
-  it('flags tangles, cycles, and mismatches over the configured bounds', () => {
+  it('flags tangles, cycles, mismatches, and levelization depth over bounds', () => {
     const violations = evaluateArchitecture(arch, {
-      architecture: { maxTangles: 0, maxCycles: 0, maxMismatches: 0 },
+      architecture: { maxTangles: 0, maxCycles: 0, maxMismatches: 0, maxLevelizationDepth: 2 },
     });
-    expect(violations).toHaveLength(3);
+    expect(violations).toHaveLength(4);
     expect(violations.every((v) => v.kind === 'architecture')).toBe(true);
+    expect(violations.some((v) => v.message.includes('depth 3'))).toBe(true);
   });
 
   it('passes when within bounds', () => {
     const violations = evaluateArchitecture(arch, {
-      architecture: { maxTangles: 1, maxCycles: 1, maxMismatches: 1 },
+      architecture: { maxTangles: 1, maxCycles: 1, maxMismatches: 1, maxLevelizationDepth: 3 },
     });
     expect(violations).toHaveLength(0);
+  });
+});
+
+describe('coChangeOptions', () => {
+  it('uses config values and lets explicit flags override them', () => {
+    const config = {
+      coChange: { minSupport: 5, minRatio: 0.7, maxCommits: 100, maxFilesPerCommit: 10 },
+    };
+    const options = coChangeOptions(config, { minSupport: 2, maxCommits: 50 });
+    expect(options?.minSupport).toBe(2);
+    expect(options?.minRatio).toBe(0.7);
+    expect(options?.maxCommits).toBe(50);
+    expect(options?.maxFilesPerCommit).toBe(10);
+  });
+
+  it('skips the channel when disabled or explicitly off', () => {
+    expect(coChangeOptions({ coChange: { enabled: false } })).toBeNull();
+    expect(coChangeOptions({}, { minSupport: 0 })).toBeNull();
+  });
+
+  it('lets an explicit threshold re-enable a disabled config', () => {
+    expect(coChangeOptions({ coChange: { enabled: false } }, { minSupport: 3 })?.minSupport).toBe(3);
   });
 });

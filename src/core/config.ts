@@ -1,8 +1,12 @@
 import { parse } from 'yaml';
 import { readFileSync, existsSync } from 'node:fs';
 import { ConnascenceType } from './ir.js';
-import { ScanReport } from './scoring/score.js';
+import { HEURISTIC_TYPES, type ScanReport } from './scoring/score.js';
 import { strengthOf } from './scoring/strength.js';
+import type { CoChangeOptions } from './cochange.js';
+import { ConfigError, validateConfig } from './configValidate.js';
+
+export { ConfigError, validateConfig } from './configValidate.js';
 
 export interface ConnascenceConfig {
   /** fail the run when a type's total count exceeds this */
@@ -22,20 +26,62 @@ export interface ConnascenceConfig {
     maxCycles?: number;
     /** modules spanning more directories than this (structure/folder mismatch) */
     maxMismatches?: number;
+    /** maximum SCC-collapsed dependency-chain depth (module levelization) */
+    maxLevelizationDepth?: number;
+  };
+  /** temporal co-change candidate options (never gate; CLI flags override) */
+  coChange?: {
+    /** default true; false skips the git-history channel */
+    enabled?: boolean;
+    /** minimum shared commits (default 3) */
+    minSupport?: number;
+    /** minimum confidence, 0..1 (default 0.5) */
+    minRatio?: number;
+    /** commits of history inspected (default 500) */
+    maxCommits?: number;
+    /** mass edits touching more files than this are skipped (default 25) */
+    maxFilesPerCommit?: number;
   };
 }
 
-export function loadConfig(path = '.connascence.yml'): ConnascenceConfig {
-  if (!existsSync(path)) return {};
-  return (parse(readFileSync(path, 'utf8')) as ConnascenceConfig) ?? {};
+export function loadConfig(path = '.connascence.yml', required = false): ConnascenceConfig {
+  if (!existsSync(path)) {
+    if (required) throw new ConfigError(`${path}: config file not found`);
+    return {};
+  }
+  let raw: unknown;
+  try {
+    raw = parse(readFileSync(path, 'utf8'));
+  } catch (error) {
+    throw new ConfigError(`${path}: ${(error as Error).message}`);
+  }
+  return validateConfig(raw, path);
+}
+
+/**
+ * Config/default co-change options for the CLI. Explicit `--co-change=<n>`
+ * overrides config; `--co-change=off` (0) disables it even when config enables
+ * it. Returns null when the channel should be skipped.
+ */
+export function coChangeOptions(
+  config: ConnascenceConfig,
+  overrides: { minSupport?: number; maxCommits?: number } = {},
+): CoChangeOptions | null {
+  const c = config.coChange;
+  if (overrides.minSupport === 0) return null;
+  if (overrides.minSupport === undefined && c?.enabled === false) return null;
+  return {
+    minSupport: overrides.minSupport ?? c?.minSupport,
+    minRatio: c?.minRatio,
+    maxCommits: overrides.maxCommits ?? c?.maxCommits,
+    maxFilesPerCommit: c?.maxFilesPerCommit,
+  };
 }
 
 export interface Violation {
   kind: 'threshold' | 'gate' | 'architecture';
   message: string;
 }
-
-const HEURISTIC_TYPES = new Set(['meaning', 'value', 'identity']);
 
 /** Drop heuristic-detector edges when configured (they are candidates, not certainties). */
 export function filterHeuristics<T extends { connascenceType: string }>(edges: T[], config: ConnascenceConfig): T[] {

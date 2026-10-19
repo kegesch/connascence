@@ -39,9 +39,10 @@ npm run cli -- diff "src/**/*.ts" --repo=. --base=main --format=agent
 # exit code 1 when the change introduces coupling (CI gate)
 ```
 
-See `.connascence.yml.example` for thresholds, ignores, and heuristic
-filtering; `--format=architecture` reports graph-detected modules and
-layering verdicts. `scan` also reports resolved dependency cycles (gated in
+See `.connascence.yml.example` for thresholds, ignores, heuristic filtering,
+co-change options, and architecture bounds (including levelization depth);
+config keys are validated with the failing key path. `--format=architecture`
+reports graph-detected modules and layering verdicts. `scan` also reports resolved dependency cycles (gated in
 `diff`), Lakos dependency-chain depth (file graph in JSON, module graph in
 architecture), and temporal co-change candidates from git history
 (`--co-change=off` to skip; they are review prompts and never gate).

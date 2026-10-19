@@ -347,6 +347,15 @@ export function evaluateArchitecture(
       message: `mismatches: ${arch.mismatches.length} module(s) span multiple directories, exceeds maxMismatches ${a.maxMismatches}`,
     });
   }
+  if (
+    a.maxLevelizationDepth !== undefined &&
+    arch.levelization.depth > a.maxLevelizationDepth
+  ) {
+    violations.push({
+      kind: 'architecture',
+      message: `levelization: depth ${arch.levelization.depth} exceeds maxLevelizationDepth ${a.maxLevelizationDepth}`,
+    });
+  }
   return violations;
 }
 

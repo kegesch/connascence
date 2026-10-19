@@ -3,7 +3,7 @@ import path from 'node:path';
 import { writeFileSync } from 'node:fs';
 import { scan } from './core/scan.js';
 import { explain } from './core/explain.js';
-import { loadConfig, evaluateConfig, filterHeuristics } from './core/config.js';
+import { loadConfig, evaluateConfig, filterHeuristics, coChangeOptions } from './core/config.js';
 import { clusterFindings, fileHotspots } from './core/report/findings.js';
 import { remediationFor } from './core/report/remediation.js';
 import { dirCohesion, cohesionFix, fileSplits } from './core/report/cohesion.js';
@@ -34,8 +34,8 @@ function usage(): never {
   console.error('  --top=<n>              limit listed items (default 20, 0 = all)');
   console.error('  --format=summary|findings|architecture|json|html|sarif|agent  --out=<file> (JSON/HTML)');
   console.error('  --config=<file>        config file (default .connascence.yml if present)');
-  console.error('  --co-change=<n|off>    temporal co-change candidate threshold (default 3 shared commits)');
-  console.error('  --history=<n>          commits of git history to inspect (default 500)');
+  console.error('  --co-change=<n|off>    temporal co-change threshold (default 3 or config coChange)');
+  console.error('  --history=<n>          commits of git history (default 500 or config coChange)');
   console.error('       connascence explain <scan-glob...> -- <file>:<line>');
   console.error('       connascence diff <glob...> --repo=<path> [--base=<ref>] [--head=<ref>]');
   console.error('  (diff refs: --head omitted = working tree, --base omitted = merge-base with origin/HEAD/default; --format=agent = harness feedback)');
@@ -60,8 +60,8 @@ let repoPath: string | undefined;
 let baseRef: string | undefined;
 let headRef: string | undefined;
 let minSeverity: 'low' | 'medium' | 'high' = 'medium';
-let coChangeMin = 3;
-let historyDepth = 500;
+let coChangeMin: number | undefined;
+let historyDepth: number | undefined;
 
 let v: string | undefined;
 for (let i = 1; i < args.length; i++) {
@@ -86,7 +86,13 @@ for (let i = 1; i < args.length; i++) {
 }
 if (patterns.length === 0) usage();
 
-const config = loadConfig(configPath);
+let config;
+try {
+  config = loadConfig(configPath, configPath !== undefined);
+} catch (error) {
+  console.error(`error: ${(error as Error).message}`);
+  process.exit(1);
+}
 
 // ---- diff command: coupling introduced/removed between git refs ----
 if (command === 'diff') {
@@ -113,12 +119,12 @@ if (command === 'diff') {
 }
 
 const report = scan(patterns, config, typescriptBackend);
-if (command === 'scan' && coChangeMin > 0) {
+const coChange = coChangeOptions(config, { minSupport: coChangeMin, maxCommits: historyDepth });
+if (command === 'scan' && coChange) {
   report.coChange = readCoChange(process.cwd(), {
+    ...coChange,
     globs: patterns,
     ignore: config.ignore,
-    minSupport: coChangeMin,
-    maxCommits: historyDepth,
   });
 }
 

@@ -558,7 +558,42 @@ depth 4 behind the whole scan pipeline. Moving `globMatch` to the foundation
 module `paths.ts` dropped `cochange.ts` to level 2 (and `paths.ts` is level 1);
 it also removed the `cochange -> scan` dependency. 242 tests green.
 
-**Next iteration:** M3a `.yml` config — make thresholds, ignores, heuristics,
-co-change options, and architecture bounds configurable, with validation and
-fixtures; then M3b scoring.
+### Iteration 7 — 2026-10-19: validated `.yml` config, config-driven co-change
+
+- `src/core/configValidate.ts`: a real schema boundary. Unknown top-level or
+  nested keys fail with the key path; types and ranges are checked (thresholds
+  are non-negative integers, gate strength 1..9 / locality 1..5, co-change
+  `minRatio` 0..1, architecture bounds non-negative). `loadConfig` wraps YAML
+  syntax errors with the file name; an explicitly passed `--config` that does
+  not exist is now an error, while the implicit default may be absent.
+- `CONNASCENCE_TYPES` moved to the IR as the single runtime list (the type is
+  derived from it), and config reuses `HEURISTIC_TYPES` from scoring instead of
+  duplicating it. Both remove drift between the type union, validation, and
+  filtering.
+- Co-change is configurable under `coChange`: `enabled`, `minSupport`,
+  `minRatio`, `maxCommits`, `maxFilesPerCommit`. `coChangeOptions` applies
+  precedence **CLI > config > engine defaults**; `--co-change=off` disables even
+  when config enables it, and an explicit `--co-change=<n>` re-enables a
+  disabled config. `--history` overrides `maxCommits`.
+- Architecture gains `maxLevelizationDepth`, evaluated at every module level by
+  `evaluateArchitecture`. `.connascence.yml.example` and README document the new
+  schema; the example is itself a validation fixture.
+- Tests: full valid config, empty document, 14 invalid-shape cases, key-path
+  messages, missing/explicit config files, YAML syntax errors, example validity,
+  co-change precedence, and the depth bound.
+
+Dogfood: the config run (`heuristicFindings: exclude`, co-change support 4 /
+ratio 0.6, depth bound 5) produced 961 edges with **0 heuristic edges**, 2
+co-change candidates (minimum support 4, ratio 0.8), depth 5 at the fine
+architecture level and exit 0. A depth-3 config correctly failed with
+`levelization: depth 5 exceeds maxLevelizationDepth 3`; a `minRatio: 1.5`
+config failed at `coChange.minRatio`; `--co-change=off` and `enabled: false`
+both suppressed candidates, while an explicit `--co-change=3` re-enabled them.
+Default scan remains **0 actionable, 0 cycles**, depth 6 over 43 files.
+`diff --base=HEAD` exits 0. 267 tests green.
+
+**Next iteration:** M3b scoring — replace the remaining crude statistics
+(name-edge-based degree and the count/severity collapse) with the normalized IR
+signals already in place, keeping the precision gate and candidate/gate split
+intact. Then revisit the plugin payload against the improved score.
 

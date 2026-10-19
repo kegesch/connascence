@@ -16,9 +16,23 @@ gate:
   minStrength: 7   # 7 = timing; 1..9 weakest..strongest (see connascence.io)
   minLocality: 4   # 4 = cross-module
 
+# Heuristic detectors (meaning/value/identity) are review candidates. 'exclude'
+# removes them from all output; they never gate either way.
+heuristicFindings: include
+
 # Architecture: fail when the graph-detected module structure (scan --format=architecture)
 # exceeds these. Modules are detected from the dependency graph, not folders.
 architecture:
   maxTangles: 0      # module pairs coupled in both directions
   maxCycles: 0       # module dependency cycles
   # maxMismatches: 3 # modules spanning multiple directories (folder/structure mismatch)
+  # maxLevelizationDepth: 5 # SCC-collapsed Lakos dependency-chain depth
+
+# Temporal co-change candidates from git history: review prompts, never gated.
+# CLI flags (--co-change, --history) override these values.
+coChange:
+  enabled: true
+  minSupport: 3          # shared commits
+  minRatio: 0.5          # confidence (support / rarer file's changes)
+  maxCommits: 500        # history depth
+  maxFilesPerCommit: 25  # mass edits above this are ignored

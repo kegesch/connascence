@@ -3,16 +3,19 @@
 // Nothing in src/core/ may import language-specific types; if a downstream
 // consumer needs more information, extend the IR here.
 
-export type ConnascenceType =
-  | 'name'
-  | 'type'
-  | 'meaning'
-  | 'position'
-  | 'algorithm'
-  | 'execution'
-  | 'timing'
-  | 'value'
-  | 'identity';
+export const CONNASCENCE_TYPES = [
+  'name',
+  'type',
+  'meaning',
+  'position',
+  'algorithm',
+  'execution',
+  'timing',
+  'value',
+  'identity',
+] as const;
+
+export type ConnascenceType = (typeof CONNASCENCE_TYPES)[number];
 
 export type ScopeKind = 'function' | 'class' | 'module' | 'package';
 
