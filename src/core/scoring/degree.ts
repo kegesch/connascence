@@ -17,3 +17,27 @@ export function degreeMap(project: IrProject, type?: IrProject['edges'][number][
 export function degreeOf(degrees: Map<string, number>, nodeId: string): number {
   return degrees.get(nodeId) ?? 0;
 }
+
+/**
+ * Degree per connascence type. Name edges are import-by-name coupling and
+ * would otherwise inflate the breadth of unrelated position/identity edges
+ * that happen to share an endpoint.
+ */
+export function degreeByType(
+  project: IrProject,
+): Map<IrProject['edges'][number]['connascenceType'], Map<string, number>> {
+  const byType = new Map<
+    IrProject['edges'][number]['connascenceType'],
+    Map<string, number>
+  >();
+  for (const edge of project.edges) {
+    let degrees = byType.get(edge.connascenceType);
+    if (!degrees) {
+      degrees = new Map();
+      byType.set(edge.connascenceType, degrees);
+    }
+    degrees.set(edge.nodeA, (degrees.get(edge.nodeA) ?? 0) + 1);
+    degrees.set(edge.nodeB, (degrees.get(edge.nodeB) ?? 0) + 1);
+  }
+  return byType;
+}

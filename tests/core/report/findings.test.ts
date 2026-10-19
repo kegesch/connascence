@@ -117,5 +117,21 @@ describe('fileHotspots', () => {
     expect(a.edgeCount).toBe(2);
     expect(a.maxDegree).toBe(7);
     expect(a.worstStrength).toBe(5);
+    expect(a.pressure).toBeGreaterThan(0);
+  });
+
+  it('ranks by pressure, not raw edge count', () => {
+    const hs = fileHotspots([
+      edge({ filePath: 'loud.ts' }, { filePath: 'x.ts' }, { strength: 1, degree: 20, locality: 5 }),
+      edge(
+        { filePath: 'deep.ts' },
+        { filePath: 'y.ts' },
+        { strength: 9, degree: 1, locality: 5, heuristic: true },
+      ),
+    ]);
+    expect(hs[0].filePath).toBe('deep.ts');
+    const deep = hs.find((h) => h.filePath === 'deep.ts')!;
+    const loud = hs.find((h) => h.filePath === 'loud.ts')!;
+    expect(deep.pressure).toBeGreaterThan(loud.pressure);
   });
 });

@@ -592,8 +592,42 @@ both suppressed candidates, while an explicit `--co-change=3` re-enabled them.
 Default scan remains **0 actionable, 0 cycles**, depth 6 over 43 files.
 `diff --base=HEAD` exits 0. 267 tests green.
 
-**Next iteration:** M3b scoring — replace the remaining crude statistics
-(name-edge-based degree and the count/severity collapse) with the normalized IR
-signals already in place, keeping the precision gate and candidate/gate split
-intact. Then revisit the plugin payload against the improved score.
+### Iteration 8 — 2026-10-19: M3b.1 continuous coupling pressure
+
+M3b is split: b1 replaces the crude count/severity statistics, b2 adds the
+seven-axis score vector.
+
+- Degree is now computed **per connascence type** (`degreeByType`). A name
+  import (strength 1) sharing an endpoint with an identity write (strength 9)
+  no longer inflates the write's breadth.
+- `pressure.ts`: normalized edge pressure
+  `clamp01((strength/9) × (locality/5) × (1 + log2(1+degree)/3))`. Breadth is
+  logarithmic so a utility imported everywhere does not drown a single strong
+  semantic coupling. `ScoredEdge.pressure` is emitted in JSON; `ScanReport`
+  gains a `pressure` summary (total, mean, max, by type).
+- Ranking is continuous: findings sort by worst pressure, file hotspots rank by
+  summed pressure rather than edge count, and the default summary prints the
+  aggregate. Severity keeps the precision split: deterministic strength >= 5
+  and locality >= 3 remains high; medium is `pressure >= 0.35`; heuristic high
+  needs cross-module locality and `pressure >= 0.7`. Degree no longer creates a
+  high/critical finding by itself.
+- `graphSections.ts` renders levelization + pressure for every text format, so
+  the CLI does not grow one output loop per format.
+
+Dogfood: default scan is **1207 edges, pressure 264.77 total / 0.218 mean /
+0.95 max**, 46 components at depth 6, **0 cycles, 0 deterministic actionable
+edges**, and 43 identity candidates (heuristic channel). The first run flagged
+`score.ts` as two independent function groups and `architecture.ts` as two
+modules; both were real:
+- pressure aggregation moved from `score.ts` to `pressure.ts`;
+- module detection (Louvain graph, hierarchy, dependency weight) moved to
+  `report/modules.ts`, leaving `architecture.ts` as the report/evaluation layer.
+After both, the scan reports **no split candidates**; `diff --base=HEAD` exits
+0. 273 tests green; build, lint, and plugin typecheck clean.
+
+**Next iteration:** M3b.2 full score vector — acyclicity, levelization,
+equality (gini + level term), redundancy, cohesion (Louvain Q), encapsulation
+v1, and coupling pressure, combined by geometric mean into a 0..10000 score
+with `scoreVersion` + config hash in JSON and plugin baselines. Then revisit the
+plugin payload against the scored vector.
 

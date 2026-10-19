@@ -4,20 +4,10 @@ import type { Levelization } from '../report/levelization.js';
 import type { CoChangePair } from '../cochange.js';
 import { strengthOf } from './strength.js';
 import { localityOf } from './locality.js';
-import { degreeMap, degreeOf } from './degree.js';
+import { degreeByType, degreeOf } from './degree.js';
+import { pressureOf, pressureSummary, type PressureSummary } from './pressure.js';
 
-/** All connascence types in canonical (strength) order — single source of truth. */
-export const CONNASCENCE_TYPES = [
-  'name',
-  'type',
-  'meaning',
-  'position',
-  'algorithm',
-  'execution',
-  'timing',
-  'value',
-  'identity',
-] as const;
+export type { PressureSummary } from './pressure.js';
 
 /** Detectors that produce candidates rather than certainties. */
 export const HEURISTIC_TYPES: ReadonlySet<string> = new Set(['meaning', 'value', 'identity']);
@@ -28,7 +18,10 @@ export interface ScoredEdge {
   connascenceType: IrEdge['connascenceType'];
   strength: number;
   locality: number;
+  /** breadth among edges of the SAME connascence type (name imports cannot inflate identity edges) */
   degree: number;
+  /** continuous coupling pressure, 0..1 (strength x locality x same-type breadth) */
+  pressure?: number;
   evidence: string;
   /** true for heuristic detectors (meaning/value/identity): candidates, not certainties */
   heuristic: boolean;
@@ -51,6 +44,8 @@ export interface EdgeEndpoint {
 
 export interface ScanReport {
   summary: Record<string, number>;
+  /** continuous coupling pressure over all scored edges */
+  pressure?: PressureSummary;
   edges: ScoredEdge[];
   /** file-level SCCs over resolved dependencies (computed by the scan pipeline) */
   cycles?: FileCycle[];
@@ -62,7 +57,7 @@ export interface ScanReport {
 
 export function scoreProject(project: IrProject): ScanReport {
   const byId = new Map<string, IrNode>(project.nodes.map((n) => [n.id, n]));
-  const degrees = degreeMap(project);
+  const degreesByType = degreeByType(project);
 
   function endpoint(id: string): EdgeEndpoint {
     const node = byId.get(id);
@@ -81,22 +76,34 @@ export function scoreProject(project: IrProject): ScanReport {
   const edges: ScoredEdge[] = project.edges.map((edge) => {
     const a = byId.get(edge.nodeA);
     const b = byId.get(edge.nodeB);
+    const degrees = degreesByType.get(edge.connascenceType);
+    const strength = strengthOf(edge.connascenceType);
+    const locality = a && b ? localityOf(a, b) : 99;
+    const degree = Math.min(
+      degreeOf(degrees ?? new Map(), edge.nodeA),
+      degreeOf(degrees ?? new Map(), edge.nodeB),
+    );
     return {
       nodeA: endpoint(edge.nodeA),
       nodeB: endpoint(edge.nodeB),
       connascenceType: edge.connascenceType,
-      strength: strengthOf(edge.connascenceType),
-      locality: a && b ? localityOf(a, b) : 99,
-      degree: Math.min(degreeOf(degrees, edge.nodeA), degreeOf(degrees, edge.nodeB)),
+      strength,
+      locality,
+      degree,
+      pressure: pressureOf({ strength, locality, degree }),
       evidence: edge.evidence,
       heuristic: HEURISTIC_TYPES.has(edge.connascenceType),
       resolved: edge.resolved,
     };
   });
 
-  // worst coupling first: strongest type, worst locality, highest degree
+  // worst coupling first: continuous pressure, then the raw model fields
   edges.sort(
-    (x, y) => y.strength - x.strength || y.locality - x.locality || y.degree - x.degree,
+    (x, y) =>
+      (y.pressure ?? 0) - (x.pressure ?? 0) ||
+      y.strength - x.strength ||
+      y.locality - x.locality ||
+      y.degree - x.degree,
   );
 
   const summary: Record<string, number> = {};
@@ -104,5 +111,5 @@ export function scoreProject(project: IrProject): ScanReport {
     summary[edge.connascenceType] = (summary[edge.connascenceType] ?? 0) + 1;
   }
 
-  return { summary, edges };
+  return { summary, pressure: pressureSummary(edges), edges };
 }

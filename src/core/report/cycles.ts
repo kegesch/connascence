@@ -34,6 +34,7 @@ export function cycleIdentity(files: string[]): string {
 
 function compareEdges(a: ScoredEdge, b: ScoredEdge): number {
   return (
+    (b.pressure ?? 0) - (a.pressure ?? 0) ||
     b.strength - a.strength ||
     b.locality - a.locality ||
     b.degree - a.degree ||

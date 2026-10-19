@@ -7,6 +7,7 @@ export function scanJson(report: ScanReport, edges: ScoredEdge[]): string {
   return JSON.stringify(
     {
       summary: report.summary,
+      pressure: report.pressure ?? null,
       cycles: report.cycles ?? [],
       levelization: report.levelization ?? null,
       coChange: report.coChange ?? [],

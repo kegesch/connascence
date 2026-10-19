@@ -46,6 +46,9 @@ reports graph-detected modules and layering verdicts. `scan` also reports resolv
 `diff`), Lakos dependency-chain depth (file graph in JSON, module graph in
 architecture), and temporal co-change candidates from git history
 (`--co-change=off` to skip; they are review prompts and never gate).
+Findings and file hotspots are ranked by continuous coupling pressure
+(strength × locality × same-type breadth), not a raw edge count; `--format=json`
+includes per-edge `pressure` and an aggregate `pressure` summary.
 
 ## opencode plugin (the M0 loop)
 

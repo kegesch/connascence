@@ -1,4 +1,5 @@
 import { ScanReport, ScoredEdge } from '../scoring/score.js';
+import { pressureOf } from '../scoring/pressure.js';
 import { Severity, severityOf } from './severity.js';
 import { shortPath } from '../paths.js';
 import type { FileCycle } from './cycles.js';
@@ -241,6 +242,7 @@ export function clusterFindings(edges: ScoredEdge[], cycles: FileCycle[] = []): 
       // graph-level defects first, then certainty: deterministic before heuristic
       Number(b.kind === 'cycle') - Number(a.kind === 'cycle') ||
       Number(a.worst.heuristic) - Number(b.worst.heuristic) ||
+      (b.worst.pressure ?? pressureOf(b.worst)) - (a.worst.pressure ?? pressureOf(a.worst)) ||
       b.worst.strength - a.worst.strength ||
       b.members.length - a.members.length ||
       b.edgeCount - a.edgeCount,
@@ -315,25 +317,33 @@ export interface FileHotspot {
   edgeCount: number;
   maxDegree: number;
   worstStrength: number;
+  /** sum of incident continuous edge pressures (an edge inside one file counts twice) */
+  pressure: number;
 }
 
-/** Per-file coupling hotspots across all edges a file participates in. */
+/** Per-file coupling hotspots, ranked by continuous pressure rather than edge count. */
 export function fileHotspots(edges: ScoredEdge[]): FileHotspot[] {
-  const byFile = new Map<string, { edgeCount: number; maxDegree: number; worstStrength: number }>();
+  const byFile = new Map<
+    string,
+    { edgeCount: number; maxDegree: number; worstStrength: number; pressure: number }
+  >();
   for (const e of edges) {
-    for (const [ep, degree] of [
-      [e.nodeA, e.degree],
-      [e.nodeB, e.degree],
-    ] as const) {
+    for (const ep of [e.nodeA, e.nodeB]) {
       const key = ep.filePath;
-      const cur = byFile.get(key) ?? { edgeCount: 0, maxDegree: 0, worstStrength: 0 };
+      const cur = byFile.get(key) ?? { edgeCount: 0, maxDegree: 0, worstStrength: 0, pressure: 0 };
       cur.edgeCount += 1;
-      cur.maxDegree = Math.max(cur.maxDegree, degree);
+      cur.maxDegree = Math.max(cur.maxDegree, e.degree);
       cur.worstStrength = Math.max(cur.worstStrength, e.strength);
+      cur.pressure += e.pressure ?? pressureOf(e);
       byFile.set(key, cur);
     }
   }
   return [...byFile.entries()]
-    .map(([filePath, s]) => ({ filePath, ...s }))
-    .sort((a, b) => b.edgeCount - a.edgeCount || b.worstStrength - a.worstStrength);
+    .map(([filePath, s]) => ({ filePath, ...s, pressure: Math.round(s.pressure * 10000) / 10000 }))
+    .sort(
+      (a, b) =>
+        b.pressure - a.pressure ||
+        b.edgeCount - a.edgeCount ||
+        b.worstStrength - a.worstStrength,
+    );
 }

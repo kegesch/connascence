@@ -1,5 +1,6 @@
-import { ScoredEdge } from '../scoring/score.js';
-import { CONNASCENCE_TYPES, HEURISTIC_TYPES } from '../scoring/score.js';
+import { ScoredEdge, HEURISTIC_TYPES } from '../scoring/score.js';
+import { CONNASCENCE_TYPES } from '../ir.js';
+import { strengthOf } from '../scoring/strength.js';
 import { toPosix } from '../paths.js';
 import type { FileCycle } from './cycles.js';
 import type { CoChangePair } from '../cochange.js';
@@ -31,8 +32,7 @@ function connascenceRules(): SarifRule[] {
     helpUri: `https://connascence.io/${type}`,
     properties: {
       heuristic: HEURISTIC_TYPES.has(type),
-      // connascence.io strength ranking, 1 (weakest) .. 9 (strongest)
-      strength: ['name', 'type', 'meaning', 'position', 'algorithm', 'execution', 'timing', 'value', 'identity'].indexOf(type) + 1,
+      strength: strengthOf(type),
     },
   }));
 }
