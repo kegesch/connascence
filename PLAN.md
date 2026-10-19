@@ -342,9 +342,15 @@ the `name` filter. `baseline` and `tool_call` events land in
   turn                newEdges=0, fresh=0, injected=false
   ```
 
-  A real edit that introduces coupling still needs to produce an `injected`
-  line; the real-engine simulation (`tests/plugin/loop-sim.test.ts`) covers
-  that path with a scratch project.
+  The seam from dispatch to delivery (`classifyEvent → becameIdle → onIdle →
+  runTurnDiff → synthetic message`) is now covered directly by
+  `tests/plugin/handlers.test.ts` with a scripted scan (injection, mid-turn
+  silence, duplicate-stop and cross-turn dedupe, informational edges,
+  `inject:false`, `scan_error`, directory filtering), and the real engine's
+  payload path by `tests/plugin/loop-sim.test.ts`. What remains is one live
+  `injected` line from an edit that adds coupling; forcing it with a synthetic
+  `src/` edit would contaminate this session's evidence, so it is left to the
+  experiment.
 - Crude `(type, file, name)` diff keying and the forgeable observation log
   remain as planned (M3a). The `event_seen` lines from the measurement probe
   are retained as evidence, not cleaned.
